@@ -1,0 +1,27 @@
+{
+    "name": "toporganic/restaurant-system",
+    "description": "Top Organic Restaurant Management System",
+    "type": "project",
+    "require": {
+        "php": ">=8.1",
+        "aws/aws-sdk-php": "^3.391",
+        "minishlink/web-push": "^11.0",
+        "mpdf/mpdf": "^8.2",
+        "openai-php/client": "^0.20.1",
+        "php-http/guzzle7-adapter": "^1.1",
+        "phpoffice/phpspreadsheet": "^2.0"
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "preferred-install": "dist",
+        "sort-packages": true,
+        "platform": {
+            "php": "8.3.32"
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "app/"
+        }
+    }
+}

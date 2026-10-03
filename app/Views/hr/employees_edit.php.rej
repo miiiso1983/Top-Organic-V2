@@ -1,0 +1,26 @@
+--- app/Views/hr/employees_edit.php
++++ app/Views/hr/employees_edit.php
+@@ -786,13 +786,6 @@ if (typeof window.jQuery === 'undefined') {
+       fillManagers(editManager, job.department_id, currentManagerId);
+     }
+   }
+-  function updateDepartmentByManager(managerId) {
+-    var manager = managersByDept.find(function(m){ return String(m.id) === String(managerId); });
+-    if (manager && manager.department_id) {
+-      editDept.value = manager.department_id;
+-      fillJobs(editJob, manager.department_id, currentJobId);
+-    }
+-  }
+   function filterPtt(pttSelect, deptName) {
+     deptName = String(deptName || '');
+     var $sel = $(pttSelect);
+@@ -836,9 +829,6 @@ if (typeof window.jQuery === 'undefined') {
+       setRoleByJob(editJob.value, editRole, null);
+       updateDepartmentByJob(editJob.value);
+     });
+-    if (editManager) editManager.addEventListener('change', function() {
+-      updateDepartmentByManager(editManager.value);
+-    });
+   }
+ 
+   var editUserId = document.getElementById('emp-edit-user-id');

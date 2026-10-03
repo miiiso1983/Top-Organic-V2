@@ -1,0 +1,109 @@
+@page {
+  size: auto;
+  margin: 0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Segoe UI', 'Cairo', Tahoma, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  background: #fff;
+  color: #000;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.receipt {
+  padding: 6px;
+  width: 100%;
+}
+
+.width-58mm .receipt { max-width: 58mm; }
+.width-80mm .receipt { max-width: 80mm; }
+
+.header {
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.brand {
+  font-weight: bold;
+  font-size: 14px;
+  white-space: pre-line;
+}
+
+.tax {
+  font-size: 10px;
+  margin-top: 4px;
+}
+
+.meta {
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+
+.meta div {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+
+.divider {
+  text-align: center;
+  margin: 6px 0;
+  font-size: 10px;
+  color: #333;
+}
+
+.items, .totals {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.items th, .items td, .totals td {
+  padding: 2px 0;
+  text-align: right;
+}
+
+.items th.num, .items td.num, .totals td.num {
+  text-align: left;
+  white-space: nowrap;
+}
+
+.items thead th {
+  border-bottom: 1px dashed #000;
+  font-weight: bold;
+}
+
+.totals tr.grand td {
+  font-weight: bold;
+  font-size: 13px;
+  border-top: 1px dashed #000;
+  padding-top: 4px;
+}
+
+.footer {
+  text-align: center;
+  font-size: 10px;
+  margin-top: 8px;
+  white-space: pre-line;
+}
+
+@media print {
+  body {
+    width: 100%;
+    background: #fff;
+  }
+  .receipt {
+    margin: 0 auto;
+  }
+  .width-58mm .receipt { width: 58mm; }
+  .width-80mm .receipt { width: 80mm; }
+}

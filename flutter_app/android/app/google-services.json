@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "84882961745",
+    "project_id": "top-organic-97642",
+    "storage_bucket": "top-organic-97642.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:84882961745:android:94ae388e86f6c81bd5cf70",
+        "android_client_info": {
+          "package_name": "com.toporganic.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC1w_EtkqJBTPlERLxWaOx94-bqcRcAPIg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:84882961745:android:92aeca19e4cb151bd5cf70",
+        "android_client_info": {
+          "package_name": "com.toporganic.top_organic_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC1w_EtkqJBTPlERLxWaOx94-bqcRcAPIg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

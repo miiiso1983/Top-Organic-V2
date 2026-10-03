@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>غير متصل - نظام إدارة المطاعم</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous">
+<style>
+  body {
+    font-family: Tahoma, Arial, sans-serif;
+    background: #1e293b;
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    margin: 0;
+    text-align: center;
+    padding: 20px;
+    box-sizing: border-box;
+  }
+  .icon { font-size: 64px; margin-bottom: 20px; }
+  h1 { margin: 0 0 10px; font-size: 22px; }
+  p { color: #cbd5e1; margin: 0 0 24px; }
+  button {
+    background: #eab308;
+    color: #1e293b;
+    border: none;
+    padding: 12px 28px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+  <div class="icon"><i class="fa-solid fa-wifi"></i></div>
+  <h1>لا يوجد اتصال بالإنترنت</h1>
+  <p>يعمل النظام محلياً على شبكة المطعم. تأكد من اتصالك بشبكة الواي فاي الخاصة بالفرع ثم أعد المحاولة.</p>
+  <button onclick="location.reload()">إعادة المحاولة</button>
+</body>
+</html>

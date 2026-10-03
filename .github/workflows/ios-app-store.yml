@@ -1,0 +1,108 @@
+name: iOS App Store Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: 'iOS build number (CFBundleVersion)'
+        required: true
+        default: '11'
+
+jobs:
+  build-and-upload:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.2'
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        working-directory: flutter_app
+        run: flutter pub get
+
+      - name: Import signing certificate
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          p12-password: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+
+      - name: Install provisioning profile
+        run: |
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo -n "${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}" | base64 -d \
+            > ~/Library/MobileDevice/Provisioning\ Profiles/AppStore.mobileprovision
+
+      - name: Create ExportOptions.plist
+        working-directory: flutter_app/ios/Runner
+        run: |
+          cat > ExportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>teamID</key>
+            <string>QDKDNYTF9P</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.toporganic.topOrganicApp</key>
+              <string>${{ secrets.IOS_PROVISIONING_PROFILE_NAME }}</string>
+            </dict>
+            <key>stripSwiftSymbols</key>
+            <true/>
+            <key>uploadBitcode</key>
+            <false/>
+            <key>uploadSymbols</key>
+            <true/>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Build iOS without codesign
+        working-directory: flutter_app
+        run: flutter build ios --release --no-codesign --build-number=${{ inputs.build_number }}
+
+      - name: Archive without code signing
+        working-directory: flutter_app
+        run: |
+          xcodebuild -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -sdk iphoneos \
+            -configuration Release \
+            -archivePath build/ios/Runner.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            archive
+
+      - name: Export IPA
+        working-directory: flutter_app
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath build/ios/Runner.xcarchive \
+            -exportPath build/ios/ipa \
+            -exportOptionsPlist ios/Runner/ExportOptions.plist
+
+      - name: Install Transporter
+        run: |
+          url="https://itunesconnect.apple.com/WebObjects/iTunesConnect.woa/ra/resources/download/public/Transporter__OSX/bin/"
+          curl -fsSL "$url" -o "/tmp/itmstransporter.pkg"
+          sudo installer -pkg "/tmp/itmstransporter.pkg" -target /
+          /usr/local/itms/bin/iTMSTransporter -help
+
+      - name: Upload to App Store Connect
+        uses: apple-actions/upload-testflight-build@v4
+        with:
+          app-path: flutter_app/build/ios/ipa/top_organic_app.ipa
+          issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ secrets.APPSTORE_API_KEY_ID }}
+          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          backend: transporter

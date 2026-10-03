@@ -1,0 +1,30 @@
+--- app/Core/HrWorkflowService.php
++++ app/Core/HrWorkflowService.php
+@@ -1,6 +1,8 @@
+ <?php
+ namespace App\Core;
+ 
++use App\Core\Workflow\EntityRegistry;
++
+ /**
+  * ربط عمليات الموارد البشرية بمحرك Workflow الديناميكي
+  */
+@@ -31,12 +33,14 @@ class HrWorkflowService
+ 
+     public static function onDeductionRequestOutcome(array $request, string $status, int $actorId, string $notes): void
+     {
+-        $payload = (array)($request['data'] ?? []);
+-        $entityId = (int)($payload['entity_id'] ?? 0);
++        $requestId = (int)($request['id'] ?? 0);
++        $link = EntityRegistry::requestLink($requestId);
++        $entityId = (int)($link['entity_id'] ?? 0);
+         if (!$entityId) {
+-            $link = \App\Core\Workflow\EntityRegistry::requestLink((int)$request['id']);
+-            $entityId = (int)($link['entity_id'] ?? 0);
++            $payload = (array)($request['data'] ?? []);
++            $entityId = (int)($payload['entity_id'] ?? 0);
+         }
++        error_log("[HR Workflow] Deduction request outcome: request_id={$requestId} status={$status} entity_id={$entityId}");
+         if (!$entityId) {
+             return;
+         }

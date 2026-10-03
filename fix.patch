@@ -1,0 +1,49 @@
+diff --git a/app/Controllers/ApprovalController.php b/app/Controllers/ApprovalController.php
+index 90cc384..180b48d 100644
+--- a/app/Controllers/ApprovalController.php
++++ b/app/Controllers/ApprovalController.php
+@@ -10,8 +10,8 @@ class ApprovalController extends Controller
+         $pending = ApprovalService::pendingForCurrentUser();
+         $history = Database::query(
+             "SELECT ar.*, aw.name AS workflow_name, u.full_name AS requester
+-             FROM approval_requests ar
+-             JOIN approval_workflows aw ON aw.id = ar.workflow_id
++             FROM legacy_approval_requests ar
++             JOIN legacy_approval_workflows aw ON aw.id = ar.workflow_id
+              LEFT JOIN users u ON u.id = ar.requested_by
+              WHERE ar.status <> 'pending'
+              ORDER BY ar.id DESC LIMIT 50"
+diff --git a/app/Views/layouts/main.php b/app/Views/layouts/main.php
+index 826d675..10babbe 100644
+--- a/app/Views/layouts/main.php
++++ b/app/Views/layouts/main.php
+@@ -8,7 +8,7 @@
+ <link rel="preconnect" href="https://fonts.googleapis.com">
+ <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+ <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap">
+-<link rel="stylesheet" href="/assets/css/app.css">
++<link rel="stylesheet" href="/assets/css/app.css?v=2">
+ <!-- PWA -->
+ <link rel="manifest" href="/manifest.json">
+ <meta name="theme-color" content="#1B5E20">
+@@ -121,6 +121,6 @@
+     </main>
+   </div>
+ </div>
+-<script src="/assets/js/app.js"></script>
++<script src="/assets/js/app.js?v=2"></script>
+ </body>
+ </html>
+diff --git a/public/service-worker.js b/public/service-worker.js
+index 4bb3253..b7801cf 100644
+--- a/public/service-worker.js
++++ b/public/service-worker.js
+@@ -3,7 +3,7 @@
+  * إستراتيجية: cache-first للأصول الثابتة، network-first للصفحات مع رجوع لصفحة أوفلاين،
+  * وعدم تخزين أي طلبات API أو طلبات POST مطلقاً.
+  */
+-const CACHE_VERSION = 'rms-cache-v1';
++const CACHE_VERSION = 'rms-cache-v2';
+ const STATIC_CACHE = CACHE_VERSION + '-static';
+ 
+ const PRECACHE_URLS = [

@@ -1,0 +1,15 @@
+--- app/Core/HrService.php
++++ app/Core/HrService.php
+@@ -786,7 +786,11 @@ class HrService
+                 1,
+             ]
+         );
+-        return (int)Database::lastInsertId() ?: null;
++        $adjId = (int)Database::lastInsertId() ?: null;
++        if ($adjId) {
++            error_log("[HR Workflow] Created adjustment from workflow: id={$adjId} employee_id={$employeeId} type={$adjustmentType} amount={$amount} effective_date={$effective}");
++        }
++        return $adjId;
+     }
+ 
+     /** التأكد من أن لدى المستخدم الصلاحية للموافقة على تسوية */

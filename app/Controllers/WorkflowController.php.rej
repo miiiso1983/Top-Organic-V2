@@ -1,0 +1,29 @@
+--- app/Controllers/WorkflowController.php
++++ app/Controllers/WorkflowController.php
+@@ -2,6 +2,7 @@
+ namespace App\Controllers;
+ 
+ use App\Core\{Controller, Database, Response, Auth, Helpers, WorkflowEngine, WorkflowTemplateService, HrService};
++use App\Core\Workflow\EntityRegistry;
+ 
+ class WorkflowController extends Controller
+ {
+@@ -126,6 +127,7 @@ class WorkflowController extends Controller
+         try {
+             $template = WorkflowTemplateService::getTemplate($templateId);
+             $data = $this->mergeUploadedFiles($_POST, $template['fields'] ?? []);
++            $adjId = null;
+ 
+             if (($template['code'] ?? '') === 'deduction_request') {
+                 $adjId = HrService::createAdjustmentFromWorkflowData($data, (int)Auth::id(), 'deduction');
+@@ -141,6 +143,10 @@ class WorkflowController extends Controller
+             $id = WorkflowEngine::createRequest($templateId, (int) Auth::id(), $data);
+             WorkflowEngine::submitRequest($id, (int) Auth::id());
+ 
++            if ($adjId) {
++                EntityRegistry::bind('hr_adjustment', $adjId, $id);
++            }
++
+             if (($template['code'] ?? '') === 'purchase_request') {
+                 $this->createPurchaseRequestFromWeb($id, $data);
+             }

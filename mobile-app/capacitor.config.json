@@ -1,0 +1,16 @@
+{
+  "appId": "com.toporganic.app",
+  "appName": "Top Organic",
+  "webDir": "www",
+  "server": {
+    "url": "https://www.toporganic.rest/",
+    "cleartext": false,
+    "androidScheme": "https"
+  },
+  "android": {
+    "backgroundColor": "#1B5E20"
+  },
+  "ios": {
+    "backgroundColor": "#1B5E20"
+  }
+}

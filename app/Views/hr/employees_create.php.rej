@@ -1,0 +1,24 @@
+--- app/Views/hr/employees_create.php
++++ app/Views/hr/employees_create.php
+@@ -175,13 +175,6 @@ $(function(){
+       fillManagers(addManager, job.department_id);
+     }
+   }
+-  function updateDepartmentByManager(managerId) {
+-    var manager = managersByDept.find(function(m){ return String(m.id) === String(managerId); });
+-    if (manager && manager.department_id) {
+-      addDept.value = manager.department_id;
+-      fillJobs(addJob, manager.department_id);
+-    }
+-  }
+   if (addDept && addJob) {
+     fillJobs(addJob, addDept.value);
+     fillManagers(addManager, addDept.value);
+@@ -192,7 +185,6 @@ $(function(){
+       filterPtt(addPtt, deptMap[addDept.value] || '');
+     });
+     addJob.addEventListener('change', function() { setRoleByJob(addJob.value, addRole); updateDepartmentByJob(addJob.value); });
+-    if (addManager) addManager.addEventListener('change', function() { updateDepartmentByManager(addManager.value); });
+   }
+   (function(){
+     var typeSelect = document.getElementById('emp-add-attendance-type');

@@ -1,0 +1,29 @@
+--- app/Controllers/ApiController.php
++++ app/Controllers/ApiController.php
+@@ -2,6 +2,7 @@
+ namespace App\Controllers;
+ 
+ use App\Core\{Controller, Database, Response, ApiAuth, ApprovalService, HrWorkflowService, StockService, Helpers, Auth, MenuService, ImageUpload, WorkflowEngine, WorkflowTemplateService, UnitConversionService, BarcodeService, ProductionService, MaterialRequestService, ProcurementReportService, NotificationService, HrService, ReservationService, AccountingService};
++use App\Core\Workflow\EntityRegistry;
+ 
+ /**
+  * REST API لتطبيق الموبايل (المدير والموظف)
+@@ -2240,6 +2241,7 @@ class ApiController extends Controller
+             }
+         }
+ 
++        $adjId = null;
+         if (($template['code'] ?? '') === 'deduction_request') {
+             $adjId = HrService::createAdjustmentFromWorkflowData($data, $userId, 'deduction');
+             if (!$adjId) {
+@@ -2254,6 +2256,10 @@ class ApiController extends Controller
+             $id = WorkflowEngine::createRequest($templateId, $userId, $data);
+             WorkflowEngine::submitRequest($id, $userId);
+ 
++            if ($adjId) {
++                EntityRegistry::bind('hr_adjustment', $adjId, $id);
++            }
++
+             // لطلبات الشراء: إنشاء سجل purchase_requests مع بنوده وربطه بـ workflow
+             if (($template['code'] ?? '') === 'purchase_request') {
+                 $this->createPurchaseRequestFromWorkflow($id, $data, $userId);

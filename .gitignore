@@ -1,0 +1,32 @@
+# إعدادات حساسة لا تُرفع (كلمات مرور قاعدة البيانات، المفاتيح السرية)
+config/config.php
+
+# ملفات النظام
+.DS_Store
+Thumbs.db
+
+# ملفات محررة النصوص
+.vscode/
+.idea/
+
+# سجلات
+*.log
+
+# تبعيات Composer
+vendor/
+
+# تبعيات Node.js/Capacitor
+mobile-app/node_modules/
+
+# ملفات Android محلية
+mobile-app/android/local.properties
+mobile-app/android/app/build/
+
+# ملفات المستخدمين المرفوعة (صوتيات/مستندات/صور مرفوعة من التطبيق)
+public/uploads/
+
+# مفاتيح توقيع التطبيق — لا تُرفع أبداً
+mobile-app/android/keystore/
+mobile-app/android/keystore.properties
+# إعداد Firebase للموبايل — يبقى محلياً
+mobile-app/android/app/google-services.json
