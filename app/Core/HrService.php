@@ -866,19 +866,14 @@ class HrService
         // قيمة تسوية أيام الدوام = عدد الأيام المعتمدة × الراتب اليومي الحالي (المشتق من الأساس المعدّل أعلاه)، وليس من قيمة مجمدة محفوظة وقت الإنشاء
         $workDaysSettlement = round($workDaysSettlementDays * $dailySalary, 2);
 
-        // الراتب المستحق حتى تاريخ الاحتساب: (الأساسي الاسمي − التخفيض) بنسبة أيام الاحتساب للشهر الجزئي
-        // (الزيادات تبقى في عمودها المستقل وتُضاف ضمن الاستحقاقات أدناه؛ تُخصم منها أيام الغياب كالمعتاد)
+        // الراتب الأساسي المستحق = الأساسي الاسمي بالكامل ناقص تخفيض الراتب المعتمد لهذه الفترة فقط.
+        // لا يُنسب (Pro-rata) حسب عدد الأيام المنقضية من الشهر الجاري حتى تاريخ الاحتساب، لأن الراتب شهري ثابت
+        // وليس أجراً يوميًا؛ أي غياب فعلي مؤكّد يُخصم مستقلاً عبر $absenceDeduction أدناه (حسب أيام الغياب الفعلية المنقضية فعلاً).
+        // (التناسب السابق بحسب expected_days/30 كان يُنقص الاستحقاقات إلى عدد أيام جزئي فقط عند إعادة توليد
+        // راتب الشهر الجاري قبل انتهائه، مما كان يُظهر إجمالي استحقاقات أقل بكثير من المستحق الفعلي.)
         $baseAfterReduction = max(0.0, $base - $salaryReduction);
         $accruedBase = $baseAfterReduction;
-        // الزيادات (raises) تُنسب بنفس معامل تناسب الأساسي للشهر الجزئي (لا تُضاف كاملة بغض النظر عن عدد الأيام المستحقة)
         $accruedRaises = $raises;
-        if ($isPartialMonth) {
-            $proratedFactor = $attendance['mode'] === 'attendance'
-                ? ((int) $attendance['expected_days']) / 30
-                : ((int) date('j', strtotime($effectiveAsOfDate)) / (int) date('t', strtotime($periodStart)));
-            $accruedBase = round($baseAfterReduction * $proratedFactor, 2);
-            $accruedRaises = round($raises * $proratedFactor, 2);
-        }
 
         // البدلات الثابتة للموظف
         $allowances = (float) Database::query(
