@@ -46,3 +46,8 @@ app.*.map.json
 /android/build/
 # Wrong SSH key files created accidentally during setup
 eval*
+
+# Android release signing (never commit — keep only on build machine)
+/android/key.properties
+/android/app/*.jks
+/android/app/*.keystore
