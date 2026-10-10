@@ -1128,15 +1128,9 @@ class HrService
             }
         }
 
-        // أيام الدوام الفعلية: لا تُحتسب العطلة الأسبوعية الخاصة كيوم عمل
-        $workingDays = 0;
-        foreach (array_keys($presentDates) as $date) {
-            $dow = (int)date('w', strtotime($date));
-            if ($employeeWeeklyOff !== null && $dow === $employeeWeeklyOff) {
-                continue;
-            }
-            $workingDays++;
-        }
+        // أيام الدوام الفعلية = كل أيام الحضور الفعلي المسجّلة بالبصمة (بما فيها الدوام في يوم العطلة الأسبوعية إن وُجد،
+        // لأنه دوام فعلي يُحتسب ويُدفع أجره وليس مستثنى)؛ يطابق هذا عدد أيام البصمة الظاهر في صفحة التقارير.
+        $workingDays = count($presentDates);
 
         $result['expected_days'] = $expected;
         $result['working_days'] = $workingDays;
