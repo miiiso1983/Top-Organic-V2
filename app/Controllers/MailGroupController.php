@@ -1,7 +1,7 @@
 <?php
 namespace App\Controllers;
 
-use App\Core\{Controller, Database, Response, Auth};
+use App\Core\{Controller, Database, Response, Auth, MailService};
 
 /**
  * مجموعات البريد الداخلي (قوائم توزيع مخصّصة) — أي مستخدم مسجّل دخول يمكنه
@@ -10,8 +10,18 @@ use App\Core\{Controller, Database, Response, Auth};
  */
 class MailGroupController extends Controller
 {
+    /** يعيد المستخدم لصفحة البريد مع رسالة إذا كانت جداول migration 172 غير موجودة بعد */
+    private function requireMigration(): bool
+    {
+        if (MailService::migrationReady()) return true;
+        $this->flash('error', 'يلزم تحديث قاعدة البيانات أولاً لتفعيل مجموعات البريد');
+        Response::redirect('/mail');
+        return false;
+    }
+
     public function index(): void
     {
+        if (!$this->requireMigration()) return;
         $groups = Database::query(
             "SELECT g.id, g.name, g.created_by, u.full_name AS creator_name,
                     (SELECT COUNT(*) FROM mail_group_members WHERE group_id = g.id) AS members_count
@@ -27,6 +37,7 @@ class MailGroupController extends Controller
 
     public function createForm(): void
     {
+        if (!$this->requireMigration()) return;
         $uid = (int)Auth::id();
         $users = Database::query(
             "SELECT id, full_name FROM users WHERE id != ? AND is_active = 1 ORDER BY full_name",
@@ -42,6 +53,7 @@ class MailGroupController extends Controller
 
     public function store(): void
     {
+        if (!$this->requireMigration()) return;
         $uid = (int)Auth::id();
         $name = trim((string)($_POST['name'] ?? ''));
         $memberIds = array_values(array_unique(array_filter(array_map('intval', (array)($_POST['member_ids'] ?? [])))));
@@ -62,6 +74,7 @@ class MailGroupController extends Controller
 
     public function editForm(string $id): void
     {
+        if (!$this->requireMigration()) return;
         $uid = (int)Auth::id();
         $group = Database::query("SELECT * FROM mail_groups WHERE id = ? AND is_active = 1", [(int)$id])->fetch();
         if (!$group) Response::abort(404, 'المجموعة غير موجودة');
@@ -88,6 +101,7 @@ class MailGroupController extends Controller
 
     public function update(string $id): void
     {
+        if (!$this->requireMigration()) return;
         $uid = (int)Auth::id();
         $group = Database::query("SELECT * FROM mail_groups WHERE id = ? AND is_active = 1", [(int)$id])->fetch();
         if (!$group || (int)$group['created_by'] !== $uid) {
@@ -114,6 +128,7 @@ class MailGroupController extends Controller
 
     public function delete(string $id): void
     {
+        if (!$this->requireMigration()) return;
         $uid = (int)Auth::id();
         $group = Database::query("SELECT * FROM mail_groups WHERE id = ?", [(int)$id])->fetch();
         if (!$group || (int)$group['created_by'] !== $uid) {

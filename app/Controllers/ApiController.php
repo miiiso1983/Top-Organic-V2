@@ -176,9 +176,12 @@ class ApiController extends Controller
     public function mailInbox(): void
     {
         $uid = ApiAuth::id();
+        $attachmentsCountSql = MailService::migrationReady()
+            ? "(SELECT COUNT(*) FROM internal_mail_attachments WHERE mail_id = m.id)"
+            : "0";
         $rows = Database::query(
             "SELECT m.id, m.subject, m.body, m.created_at, m.sender_id, u.full_name AS sender_name, r.read_at,
-                    (SELECT COUNT(*) FROM internal_mail_attachments WHERE mail_id = m.id) AS attachments_count
+                    $attachmentsCountSql AS attachments_count
              FROM internal_mail_recipients r
              JOIN internal_mails m ON m.id = r.mail_id
              JOIN users u ON u.id = m.sender_id
@@ -198,9 +201,12 @@ class ApiController extends Controller
     public function mailSent(): void
     {
         $uid = ApiAuth::id();
+        $attachmentsCountSql = MailService::migrationReady()
+            ? "(SELECT COUNT(*) FROM internal_mail_attachments WHERE mail_id = m.id)"
+            : "0";
         $rows = Database::query(
             "SELECT m.id, m.subject, m.body, m.created_at,
-                    (SELECT COUNT(*) FROM internal_mail_attachments WHERE mail_id = m.id) AS attachments_count,
+                    $attachmentsCountSql AS attachments_count,
                     (SELECT GROUP_CONCAT(u2.full_name SEPARATOR '، ')
                        FROM internal_mail_recipients r2 JOIN users u2 ON u2.id = r2.recipient_id
                       WHERE r2.mail_id = m.id) AS recipients_names
@@ -235,6 +241,10 @@ class ApiController extends Controller
     public function mailGroups(): void
     {
         $uid = ApiAuth::id();
+        if (!MailService::migrationReady()) {
+            Response::json(['ok' => true, 'data' => []]);
+            return;
+        }
         $rows = Database::query(
             "SELECT g.id, g.name, g.created_by,
                     (SELECT COUNT(*) FROM mail_group_members WHERE group_id = g.id) AS members_count
@@ -250,6 +260,10 @@ class ApiController extends Controller
     /** تفاصيل مجموعة بريد (مع أعضائها) — لشاشة التعديل في الموبايل */
     public function mailGroupShow(string $id): void
     {
+        if (!MailService::migrationReady()) {
+            Response::json(['ok' => false, 'error' => 'يلزم تحديث قاعدة البيانات أولاً'], 503);
+            return;
+        }
         $group = Database::query("SELECT * FROM mail_groups WHERE id = ? AND is_active = 1", [(int)$id])->fetch();
         if (!$group) {
             Response::json(['ok' => false, 'error' => 'المجموعة غير موجودة'], 404);
@@ -267,6 +281,10 @@ class ApiController extends Controller
     /** إنشاء مجموعة بريد جديدة من الموبايل */
     public function mailGroupStore(): void
     {
+        if (!MailService::migrationReady()) {
+            Response::json(['ok' => false, 'error' => 'يلزم تحديث قاعدة البيانات أولاً'], 503);
+            return;
+        }
         $uid = ApiAuth::id();
         $b = $this->body();
         $name = trim((string)($b['name'] ?? ''));
@@ -287,6 +305,10 @@ class ApiController extends Controller
     /** تحديث مجموعة بريد — مقصور على منشئها */
     public function mailGroupUpdate(string $id): void
     {
+        if (!MailService::migrationReady()) {
+            Response::json(['ok' => false, 'error' => 'يلزم تحديث قاعدة البيانات أولاً'], 503);
+            return;
+        }
         $uid = ApiAuth::id();
         $group = Database::query("SELECT * FROM mail_groups WHERE id = ? AND is_active = 1", [(int)$id])->fetch();
         if (!$group || (int)$group['created_by'] !== $uid) {
@@ -312,6 +334,10 @@ class ApiController extends Controller
     /** حذف مجموعة بريد — مقصور على منشئها */
     public function mailGroupDelete(string $id): void
     {
+        if (!MailService::migrationReady()) {
+            Response::json(['ok' => false, 'error' => 'يلزم تحديث قاعدة البيانات أولاً'], 503);
+            return;
+        }
         $uid = ApiAuth::id();
         $group = Database::query("SELECT * FROM mail_groups WHERE id = ?", [(int)$id])->fetch();
         if (!$group || (int)$group['created_by'] !== $uid) {

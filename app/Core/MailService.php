@@ -8,6 +8,28 @@ namespace App\Core;
  */
 class MailService
 {
+    /** نتيجة مُخزَّنة مؤقتاً (لكل طلب) لوجود جداول migration 172 */
+    private static ?bool $migrationReady = null;
+
+    /**
+     * يتحقق من وجود جداول migration 172 (مرفقات/أهداف/مجموعات البريد). تُستخدم
+     * لحماية صفحات البريد الأساسية (الوارد/الصادر/الإنشاء) من كسر كامل بخطأ
+     * قاعدة بيانات غير مُعالَج على أي بيئة لم يُشغَّل عليها migrate.php بعد —
+     * بنفس نمط حماية unreadCount() من migration 171 سابقاً.
+     */
+    public static function migrationReady(): bool
+    {
+        if (self::$migrationReady === null) {
+            try {
+                Database::query("SELECT 1 FROM internal_mail_attachments LIMIT 1")->fetch();
+                self::$migrationReady = true;
+            } catch (\Throwable $e) {
+                self::$migrationReady = false;
+            }
+        }
+        return self::$migrationReady;
+    }
+
     /**
      * يحل قائمة المستلمين النهائية (معرّفات مستخدمين فريدة، باستثناء المُرسل)
      * من مستخدمين أفراد + أقسام كاملة + مجموعات بريدية، ويُرجع أيضاً "الأهداف"
@@ -102,17 +124,27 @@ class MailService
 
     public static function attachments(int $mailId): array
     {
-        return Database::query(
-            "SELECT id, file_path, original_name, mime_type, file_size FROM internal_mail_attachments WHERE mail_id = ? ORDER BY id",
-            [$mailId]
-        )->fetchAll();
+        if (!self::migrationReady()) return [];
+        try {
+            return Database::query(
+                "SELECT id, file_path, original_name, mime_type, file_size FROM internal_mail_attachments WHERE mail_id = ? ORDER BY id",
+                [$mailId]
+            )->fetchAll();
+        } catch (\Throwable $e) {
+            return [];
+        }
     }
 
     public static function targets(int $mailId): array
     {
-        return Database::query(
-            "SELECT target_type, target_id, target_label FROM internal_mail_targets WHERE mail_id = ? ORDER BY id",
-            [$mailId]
-        )->fetchAll();
+        if (!self::migrationReady()) return [];
+        try {
+            return Database::query(
+                "SELECT target_type, target_id, target_label FROM internal_mail_targets WHERE mail_id = ? ORDER BY id",
+                [$mailId]
+            )->fetchAll();
+        } catch (\Throwable $e) {
+            return [];
+        }
     }
 }

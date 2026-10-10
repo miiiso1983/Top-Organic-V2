@@ -13,9 +13,14 @@ class MailController extends Controller
     public function index(): void
     {
         $uid = (int)Auth::id();
+        // عمود المرفقات (COUNT) يعتمد على migration 172؛ على بيئة لم تُحدَّث
+        // بعد نستبدله بـ 0 ثابت بدل كسر كامل صفحة الوارد بخطأ جدول غير موجود.
+        $attachmentsCountSql = MailService::migrationReady()
+            ? "(SELECT COUNT(*) FROM internal_mail_attachments WHERE mail_id = m.id)"
+            : "0";
         $rows = Database::query(
             "SELECT m.id, m.subject, m.body, m.created_at, u.full_name AS sender_name, r.read_at,
-                    (SELECT COUNT(*) FROM internal_mail_attachments WHERE mail_id = m.id) AS attachments_count
+                    $attachmentsCountSql AS attachments_count
              FROM internal_mail_recipients r
              JOIN internal_mails m ON m.id = r.mail_id
              JOIN users u ON u.id = m.sender_id
@@ -34,10 +39,13 @@ class MailController extends Controller
     public function sent(): void
     {
         $uid = (int)Auth::id();
+        $attachmentsCountSql = MailService::migrationReady()
+            ? "(SELECT COUNT(*) FROM internal_mail_attachments WHERE mail_id = m.id)"
+            : "0";
         $rows = Database::query(
             "SELECT m.id, m.subject, m.body, m.created_at,
                     (SELECT COUNT(*) FROM internal_mail_recipients WHERE mail_id = m.id) AS recipients_count,
-                    (SELECT COUNT(*) FROM internal_mail_attachments WHERE mail_id = m.id) AS attachments_count,
+                    $attachmentsCountSql AS attachments_count,
                     (SELECT GROUP_CONCAT(u2.full_name SEPARATOR '، ')
                        FROM internal_mail_recipients r2 JOIN users u2 ON u2.id = r2.recipient_id
                       WHERE r2.mail_id = m.id) AS recipients_names
@@ -60,10 +68,12 @@ class MailController extends Controller
         $departments = Database::query(
             "SELECT id, name FROM departments WHERE is_active = 1 ORDER BY name"
         )->fetchAll();
-        $groups = Database::query(
+        // جدول mail_groups من migration 172 قد يكون غير موجود بعد على بيئات لم
+        // يُشغَّل عليها migrate.php — نعرض قائمة فارغة بدل كسر صفحة الإنشاء كاملة.
+        $groups = MailService::migrationReady() ? Database::query(
             "SELECT g.id, g.name, (SELECT COUNT(*) FROM mail_group_members WHERE group_id = g.id) AS members_count
              FROM mail_groups g WHERE g.is_active = 1 ORDER BY g.name"
-        )->fetchAll();
+        )->fetchAll() : [];
         $this->view('mail/compose', [
             'title' => 'رسالة جديدة',
             'users' => $users,
