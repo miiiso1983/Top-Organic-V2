@@ -41,6 +41,12 @@ final List<NavItem> kNavItems = [
     label: 'nav_notifications',
     icon: Icons.notifications_outlined,
   ),
+  // بلا شرط صلاحية: صندوق البريد متاح لكل مستخدم مسجّل دخول في جميع الأقسام
+  NavItem(
+    path: '/mail',
+    label: 'nav_mail',
+    icon: Icons.mail_outline,
+  ),
   // بلا شرط صلاحية: كل موظف مسجّل دخول يمكنه تقديم طلب صيانة ومتابعة طلباته هنا
   NavItem(
     path: '/approvals',

@@ -4,6 +4,7 @@ import '../features/auth/auth_provider.dart';
 import '../features/auth/login_screen.dart';
 import '../features/dashboard/dashboard_screen.dart';
 import '../features/notifications/notifications_screen.dart';
+import '../features/mail/mail_screen.dart';
 import '../features/approvals/approvals_screen.dart';
 import '../features/approvals/workflow_create_screen.dart';
 import '../features/approvals/workflow_edit_screen.dart';
@@ -114,6 +115,10 @@ GoRouter buildRouter(AuthProvider auth) {
           GoRoute(
             path: '/notifications',
             builder: (context, state) => const NotificationsScreen(),
+          ),
+          GoRoute(
+            path: '/mail',
+            builder: (context, state) => const MailScreen(),
           ),
           GoRoute(
             path: '/approvals',

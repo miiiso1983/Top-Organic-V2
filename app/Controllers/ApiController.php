@@ -172,6 +172,103 @@ class ApiController extends Controller
         Response::json(['ok' => true]);
     }
 
+    /** عناوين البريد الإلكتروني المرتبطة بالمستخدم الحالي (من حساب المستخدم و/أو ملف الموظف) */
+    private function currentUserEmails(): array
+    {
+        $row = Database::query(
+            "SELECT u.email AS user_email, e.email AS emp_email
+             FROM users u LEFT JOIN employees e ON e.user_id = u.id
+             WHERE u.id = ?",
+            [ApiAuth::id()]
+        )->fetch();
+        if (!$row) return [];
+        $emails = [];
+        foreach (['user_email', 'emp_email'] as $k) {
+            $v = strtolower(trim((string)($row[$k] ?? '')));
+            if ($v !== '') $emails[] = $v;
+        }
+        return array_values(array_unique($emails));
+    }
+
+    /** صندوق البريد (Mail/Inbox): كل رسائل البريد الإلكتروني المُرسلة لعنوان بريد المستخدم الحالي
+     *  (المطابقة تتم عبر عنوان البريد الإلكتروني نفسه وليس عبر user_id، لتشمل كل الرسائل
+     *  المُولَّدة من أي جزء بالنظام طالما كانت موجّهة لبريده الشخصي) */
+    public function mailInbox(): void
+    {
+        $emails = $this->currentUserEmails();
+        if (empty($emails)) {
+            Response::json(['ok' => true, 'data' => [], 'unread' => 0, 'has_email' => false]);
+            return;
+        }
+        $placeholders = implode(',', array_fill(0, count($emails), '?'));
+        $rows = Database::query(
+            "SELECT id, subject, body, recipient, link, entity_type, entity_id, action_type, status, created_at, sent_at, opened_at
+             FROM notification_queue
+             WHERE channel = 'email' AND LOWER(recipient) IN ($placeholders)
+             ORDER BY created_at DESC LIMIT 100",
+            $emails
+        )->fetchAll();
+        $unread = 0;
+        foreach ($rows as $r) {
+            if (empty($r['opened_at'])) $unread++;
+        }
+        Response::json(['ok' => true, 'data' => $rows, 'unread' => $unread, 'has_email' => true]);
+    }
+
+    /** تفاصيل رسالة بريد واحدة؛ تُعلَّم كمقروءة تلقائياً عند فتحها */
+    public function mailShow(string $id): void
+    {
+        $emails = $this->currentUserEmails();
+        if (empty($emails)) {
+            Response::json(['ok' => false, 'error' => 'لا يوجد بريد إلكتروني مرتبط بحسابك'], 404);
+            return;
+        }
+        $placeholders = implode(',', array_fill(0, count($emails), '?'));
+        $row = Database::query(
+            "SELECT * FROM notification_queue WHERE id = ? AND channel = 'email' AND LOWER(recipient) IN ($placeholders)",
+            array_merge([(int)$id], $emails)
+        )->fetch();
+        if (!$row) {
+            Response::json(['ok' => false, 'error' => 'الرسالة غير موجودة'], 404);
+            return;
+        }
+        if (empty($row['opened_at'])) {
+            Database::query("UPDATE notification_queue SET opened_at = NOW() WHERE id = ?", [(int)$id]);
+            $row['opened_at'] = date('Y-m-d H:i:s');
+        }
+        Response::json(['ok' => true, 'data' => $row]);
+    }
+
+    /** تعليم رسالة بريد كمقروءة */
+    public function mailRead(string $id): void
+    {
+        $emails = $this->currentUserEmails();
+        if (!empty($emails)) {
+            $placeholders = implode(',', array_fill(0, count($emails), '?'));
+            Database::query(
+                "UPDATE notification_queue SET opened_at = NOW()
+                 WHERE id = ? AND channel = 'email' AND opened_at IS NULL AND LOWER(recipient) IN ($placeholders)",
+                array_merge([(int)$id], $emails)
+            );
+        }
+        Response::json(['ok' => true]);
+    }
+
+    /** تعليم كل رسائل البريد كمقروءة */
+    public function mailReadAll(): void
+    {
+        $emails = $this->currentUserEmails();
+        if (!empty($emails)) {
+            $placeholders = implode(',', array_fill(0, count($emails), '?'));
+            Database::query(
+                "UPDATE notification_queue SET opened_at = NOW()
+                 WHERE channel = 'email' AND opened_at IS NULL AND LOWER(recipient) IN ($placeholders)",
+                $emails
+            );
+        }
+        Response::json(['ok' => true]);
+    }
+
     public function approvals(): void
     {
         $user = ApiAuth::user();

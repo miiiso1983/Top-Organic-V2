@@ -91,6 +91,7 @@ class AppStrings {
     'nav_assets': {'ar': 'العهدة والأصول', 'en': 'Custody & Assets'},
     'nav_reports': {'ar': 'التقارير', 'en': 'Reports'},
     'nav_housing': {'ar': 'السكن', 'en': 'Housing'},
+    'nav_mail': {'ar': 'البريد', 'en': 'Mail'},
 
     // تسجيل الدخول
     'login_subtitle': {
@@ -166,6 +167,33 @@ class AppStrings {
     'notifications_action_status_update': {
       'ar': 'تحديث حالة',
       'en': 'Status Update',
+    },
+
+    // البريد (صندوق الوارد الشخصي)
+    'mail_title': {'ar': 'البريد', 'en': 'Mail'},
+    'mail_load_error': {'ar': 'تعذر تحميل البريد', 'en': 'Could not load mail'},
+    'mail_empty': {'ar': 'لا توجد رسائل', 'en': 'No messages'},
+    'mail_mark_all_read': {
+      'ar': 'تعليم الكل كمقروء',
+      'en': 'Mark all as read',
+    },
+    'mail_detail_title': {'ar': 'تفاصيل الرسالة', 'en': 'Message Details'},
+    'mail_to_label': {'ar': 'إلى', 'en': 'To'},
+    'mail_date_label': {'ar': 'التاريخ', 'en': 'Date'},
+    'mail_status_label': {'ar': 'الحالة', 'en': 'Status'},
+    'mail_status_sent': {'ar': 'مُرسلة', 'en': 'Sent'},
+    'mail_status_pending': {'ar': 'قيد الإرسال', 'en': 'Pending'},
+    'mail_status_failed': {'ar': 'فشل الإرسال', 'en': 'Failed'},
+    'mail_close': {'ar': 'إغلاق', 'en': 'Close'},
+    'mail_open': {'ar': 'فتح', 'en': 'Open'},
+    'mail_no_email_title': {
+      'ar': 'لا يوجد بريد إلكتروني مرتبط بحسابك',
+      'en': 'No email address linked to your account',
+    },
+    'mail_no_email_body': {
+      'ar': 'يرجى مراجعة إدارة النظام لإضافة بريدك الإلكتروني إلى ملفك الشخصي ليتم عرض رسائلك هنا.',
+      'en':
+          'Please contact the system administrator to add your email address to your profile so your messages appear here.',
     },
 
     // بصمة الحضور / الانصراف

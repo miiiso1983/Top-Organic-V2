@@ -792,6 +792,10 @@ $router->get('/api/inventory/low-stock', [ApiController::class, 'lowStock'], ['a
 $router->get('/api/notifications', [ApiController::class, 'notifications'], ['api']);
 $router->post('/api/notifications/{id}/read', [ApiController::class, 'notificationRead'], ['api']);
 $router->post('/api/notifications/read-all', [ApiController::class, 'notificationsReadAll'], ['api']);
+$router->get('/api/mail', [ApiController::class, 'mailInbox'], ['api']);
+$router->get('/api/mail/{id}', [ApiController::class, 'mailShow'], ['api']);
+$router->post('/api/mail/{id}/read', [ApiController::class, 'mailRead'], ['api']);
+$router->post('/api/mail/read-all', [ApiController::class, 'mailReadAll'], ['api']);
 $router->get('/api/approvals', [ApiController::class, 'approvals'], ['api', 'perm:mobile.approvals']);
 $router->post('/api/approvals/{id}/decide', [ApiController::class, 'decideApproval'], ['api', 'perm:mobile.approvals']);
 $router->get('/api/attendance/status', [ApiController::class, 'attendanceStatus'], ['api', 'perm:mobile.attendance']);
