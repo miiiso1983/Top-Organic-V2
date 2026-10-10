@@ -91,7 +91,7 @@ class AppStrings {
     'nav_assets': {'ar': 'العهدة والأصول', 'en': 'Custody & Assets'},
     'nav_reports': {'ar': 'التقارير', 'en': 'Reports'},
     'nav_housing': {'ar': 'السكن', 'en': 'Housing'},
-    'nav_mail': {'ar': 'البريد', 'en': 'Mail'},
+    'nav_mail': {'ar': 'البريد الداخلي', 'en': 'Internal Mail'},
 
     // تسجيل الدخول
     'login_subtitle': {
@@ -169,32 +169,43 @@ class AppStrings {
       'en': 'Status Update',
     },
 
-    // البريد (صندوق الوارد الشخصي)
-    'mail_title': {'ar': 'البريد', 'en': 'Mail'},
+    // البريد الداخلي (مراسلات حقيقية بين مستخدمي النظام)
+    'mail_title': {'ar': 'البريد الداخلي', 'en': 'Internal Mail'},
     'mail_load_error': {'ar': 'تعذر تحميل البريد', 'en': 'Could not load mail'},
-    'mail_empty': {'ar': 'لا توجد رسائل', 'en': 'No messages'},
-    'mail_mark_all_read': {
-      'ar': 'تعليم الكل كمقروء',
-      'en': 'Mark all as read',
-    },
-    'mail_detail_title': {'ar': 'تفاصيل الرسالة', 'en': 'Message Details'},
+    'mail_empty': {'ar': 'لا توجد رسائل واردة', 'en': 'No inbox messages'},
+    'mail_sent_empty': {'ar': 'لا توجد رسائل مُرسلة', 'en': 'No sent messages'},
+    'mail_inbox_tab': {'ar': 'الوارد', 'en': 'Inbox'},
+    'mail_sent_tab': {'ar': 'الصادر', 'en': 'Sent'},
+    'mail_compose_fab': {'ar': 'رسالة جديدة', 'en': 'New message'},
+    'mail_compose_title': {'ar': 'رسالة بريد داخلية جديدة', 'en': 'New internal mail'},
+    'mail_from_label': {'ar': 'من', 'en': 'From'},
     'mail_to_label': {'ar': 'إلى', 'en': 'To'},
     'mail_date_label': {'ar': 'التاريخ', 'en': 'Date'},
-    'mail_status_label': {'ar': 'الحالة', 'en': 'Status'},
-    'mail_status_sent': {'ar': 'مُرسلة', 'en': 'Sent'},
-    'mail_status_pending': {'ar': 'قيد الإرسال', 'en': 'Pending'},
-    'mail_status_failed': {'ar': 'فشل الإرسال', 'en': 'Failed'},
     'mail_close': {'ar': 'إغلاق', 'en': 'Close'},
-    'mail_open': {'ar': 'فتح', 'en': 'Open'},
-    'mail_no_email_title': {
-      'ar': 'لا يوجد بريد إلكتروني مرتبط بحسابك',
-      'en': 'No email address linked to your account',
+    'mail_reply_btn': {'ar': 'رد', 'en': 'Reply'},
+    'mail_delete_btn': {'ar': 'حذف', 'en': 'Delete'},
+    'mail_delete_confirm_title': {'ar': 'حذف الرسالة', 'en': 'Delete message'},
+    'mail_delete_confirm_body': {
+      'ar': 'هل أنت متأكد من حذف هذه الرسالة؟',
+      'en': 'Are you sure you want to delete this message?',
     },
-    'mail_no_email_body': {
-      'ar': 'يرجى مراجعة إدارة النظام لإضافة بريدك الإلكتروني إلى ملفك الشخصي ليتم عرض رسائلك هنا.',
-      'en':
-          'Please contact the system administrator to add your email address to your profile so your messages appear here.',
+    'mail_recipients_label': {'ar': 'المستلمون', 'en': 'Recipients'},
+    'mail_recipients_hint': {'ar': 'ابحث عن مستخدم...', 'en': 'Search users...'},
+    'mail_recipients_required': {
+      'ar': 'يجب اختيار مستلم واحد على الأقل',
+      'en': 'Please select at least one recipient',
     },
+    'mail_users_load_error': {'ar': 'تعذر تحميل قائمة المستخدمين', 'en': 'Could not load users'},
+    'mail_subject_label': {'ar': 'الموضوع', 'en': 'Subject'},
+    'mail_subject_hint': {'ar': 'موضوع الرسالة', 'en': 'Message subject'},
+    'mail_body_label': {'ar': 'نص الرسالة', 'en': 'Message'},
+    'mail_body_hint': {'ar': 'اكتب نص الرسالة...', 'en': 'Write your message...'},
+    'mail_subject_body_required': {
+      'ar': 'الموضوع ونص الرسالة مطلوبان',
+      'en': 'Subject and message are required',
+    },
+    'mail_send_btn': {'ar': 'إرسال', 'en': 'Send'},
+    'mail_send_error': {'ar': 'تعذر إرسال الرسالة', 'en': 'Could not send message'},
 
     // بصمة الحضور / الانصراف
     'hr_attendance_title': {

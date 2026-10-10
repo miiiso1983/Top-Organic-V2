@@ -88,6 +88,11 @@ window.reinitSelect2 = function(selector) { window._select2ReinitQueue.push(sele
         <span><?= htmlspecialchars($title ?? '') ?></span>
       </div>
       <div class="user-info">
+        <a href="/mail" id="mail-bell" class="btn btn-sm btn-secondary" title="البريد الداخلي" style="position:relative">
+          <i class="fa-solid fa-envelope"></i>
+          <?php $mailUnread = \App\Controllers\MailController::unreadCount((int)Auth::id()); ?>
+          <span id="mail-badge" style="display:<?= $mailUnread ? 'inline-flex' : 'none' ?>;position:absolute;top:-6px;left:-6px;background:#dc2626;color:#fff;border-radius:12px;font-size:10px;min-width:17px;height:17px;align-items:center;justify-content:center;padding:0 4px"><?= $mailUnread > 99 ? '99+' : $mailUnread ?></span>
+        </a>
         <a href="/notifications" id="ntf-bell" class="btn btn-sm btn-secondary" title="الإشعارات" style="position:relative">
           <i class="fa-solid fa-bell"></i>
           <?php $ntfUnread = \App\Core\Helpers::unreadCount((int)Auth::id()); ?>
@@ -134,6 +139,24 @@ window.reinitSelect2 = function(selector) { window._select2ReinitQueue.push(sele
   }
   setInterval(tick, 60000);
   document.addEventListener('ntf-refresh', tick); // تحديث فوري من تطبيق الموبايل
+})();
+
+// تحديث عدّاد البريد الداخلي غير المقروء دورياً كل 60 ثانية
+(function(){
+  const badge = document.getElementById('mail-badge');
+  if (!badge) return;
+  async function tick(){
+    try {
+      const r = await fetch('/mail/count');
+      const j = await r.json();
+      if (!j.ok) return;
+      const n = j.unread || 0;
+      badge.textContent = n > 99 ? '99+' : n;
+      badge.style.display = n > 0 ? 'inline-flex' : 'none';
+    } catch(e){}
+  }
+  setInterval(tick, 60000);
+  document.addEventListener('ntf-refresh', tick);
 })();
 
 // اشتراك Web Push تلقائياً (مرة واحدة بعد منح الإذن)

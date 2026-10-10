@@ -8,7 +8,7 @@ use App\Controllers\{AuthController, DashboardController, PosController, OrderCo
     PreparationKitchenController, RecipeController, ProductionController, InventoryController, WarehouseController, CustodyController,
     PurchasingController, SupplierController, FinanceController, HrController,
     OrgChartController, ApprovalController, ReportController, AdminController, ApiController,
-    AccountingController, FixedAssetController, ARAPController, BankController, CostCenterController, FinancialReportController, WorkflowController, WorkflowDesignerController, ItemCardController, ItemCostSheetController, PreparedItemsController, ItemPriceController, PlateCostImportController, MaterialRequestController, MobileController, ModulesController, PttController, NotificationsController, ShiftController, MaintenanceController, HousingController};
+    AccountingController, FixedAssetController, ARAPController, BankController, CostCenterController, FinancialReportController, WorkflowController, WorkflowDesignerController, ItemCardController, ItemCostSheetController, PreparedItemsController, ItemPriceController, PlateCostImportController, MaterialRequestController, MobileController, ModulesController, PttController, NotificationsController, ShiftController, MaintenanceController, HousingController, MailController};
 
 $router = new Router();
 
@@ -676,6 +676,17 @@ $router->post('/notifications/read-all', [NotificationsController::class, 'readA
 $router->post('/push/subscribe', [NotificationsController::class, 'pushSubscribe'], ['auth']);
 $router->post('/push/unsubscribe', [NotificationsController::class, 'pushUnsubscribe'], ['auth']);
 
+// البريد الداخلي — مراسلات بين مستخدمي النظام (متاح للجميع بلا شرط صلاحية)
+$router->get('/mail', [MailController::class, 'index'], ['auth']);
+$router->get('/mail/sent', [MailController::class, 'sent'], ['auth']);
+$router->get('/mail/compose', [MailController::class, 'composeForm'], ['auth']);
+$router->post('/mail/compose', [MailController::class, 'store'], ['auth']);
+$router->get('/mail/count', [MailController::class, 'countJson'], ['auth']);
+$router->get('/mail/sent/{id}', [MailController::class, 'showSent'], ['auth']);
+$router->post('/mail/sent/{id}/delete', [MailController::class, 'deleteSent'], ['auth']);
+$router->get('/mail/{id}', [MailController::class, 'show'], ['auth']);
+$router->post('/mail/{id}/delete', [MailController::class, 'delete'], ['auth']);
+
 // ===== Push-to-Talk (PTT) — الويب =====
 $router->get('/ptt', [PttController::class, 'index'], ['auth', 'perm:ptt.use']);
 $router->get('/ptt/channels/{id}', [PttController::class, 'channel'], ['auth', 'perm:ptt.use']);
@@ -793,9 +804,14 @@ $router->get('/api/notifications', [ApiController::class, 'notifications'], ['ap
 $router->post('/api/notifications/{id}/read', [ApiController::class, 'notificationRead'], ['api']);
 $router->post('/api/notifications/read-all', [ApiController::class, 'notificationsReadAll'], ['api']);
 $router->get('/api/mail', [ApiController::class, 'mailInbox'], ['api']);
+$router->get('/api/mail/sent', [ApiController::class, 'mailSent'], ['api']);
+$router->get('/api/mail/users', [ApiController::class, 'mailUsers'], ['api']);
+$router->post('/api/mail/compose', [ApiController::class, 'mailCompose'], ['api']);
+$router->post('/api/mail/read-all', [ApiController::class, 'mailReadAll'], ['api']);
 $router->get('/api/mail/{id}', [ApiController::class, 'mailShow'], ['api']);
 $router->post('/api/mail/{id}/read', [ApiController::class, 'mailRead'], ['api']);
-$router->post('/api/mail/read-all', [ApiController::class, 'mailReadAll'], ['api']);
+$router->post('/api/mail/{id}/delete', [ApiController::class, 'mailDelete'], ['api']);
+$router->post('/api/mail/sent/{id}/delete', [ApiController::class, 'mailDeleteSent'], ['api']);
 $router->get('/api/approvals', [ApiController::class, 'approvals'], ['api', 'perm:mobile.approvals']);
 $router->post('/api/approvals/{id}/decide', [ApiController::class, 'decideApproval'], ['api', 'perm:mobile.approvals']);
 $router->get('/api/attendance/status', [ApiController::class, 'attendanceStatus'], ['api', 'perm:mobile.attendance']);

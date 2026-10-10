@@ -172,102 +172,150 @@ class ApiController extends Controller
         Response::json(['ok' => true]);
     }
 
-    /** عناوين البريد الإلكتروني المرتبطة بالمستخدم الحالي (من حساب المستخدم و/أو ملف الموظف) */
-    private function currentUserEmails(): array
-    {
-        $row = Database::query(
-            "SELECT u.email AS user_email, e.email AS emp_email
-             FROM users u LEFT JOIN employees e ON e.user_id = u.id
-             WHERE u.id = ?",
-            [ApiAuth::id()]
-        )->fetch();
-        if (!$row) return [];
-        $emails = [];
-        foreach (['user_email', 'emp_email'] as $k) {
-            $v = strtolower(trim((string)($row[$k] ?? '')));
-            if ($v !== '') $emails[] = $v;
-        }
-        return array_values(array_unique($emails));
-    }
-
-    /** صندوق البريد (Mail/Inbox): كل رسائل البريد الإلكتروني المُرسلة لعنوان بريد المستخدم الحالي
-     *  (المطابقة تتم عبر عنوان البريد الإلكتروني نفسه وليس عبر user_id، لتشمل كل الرسائل
-     *  المُولَّدة من أي جزء بالنظام طالما كانت موجّهة لبريده الشخصي) */
+    /** البريد الداخلي (Mail/Inbox): صندوق الوارد — رسائل حقيقية بين مستخدمي النظام (ليست إشعارات بريد خارجي) */
     public function mailInbox(): void
     {
-        $emails = $this->currentUserEmails();
-        if (empty($emails)) {
-            Response::json(['ok' => true, 'data' => [], 'unread' => 0, 'has_email' => false]);
-            return;
-        }
-        $placeholders = implode(',', array_fill(0, count($emails), '?'));
+        $uid = ApiAuth::id();
         $rows = Database::query(
-            "SELECT id, subject, body, recipient, link, entity_type, entity_id, action_type, status, created_at, sent_at, opened_at
-             FROM notification_queue
-             WHERE channel = 'email' AND LOWER(recipient) IN ($placeholders)
-             ORDER BY created_at DESC LIMIT 100",
-            $emails
+            "SELECT m.id, m.subject, m.body, m.created_at, m.sender_id, u.full_name AS sender_name, r.read_at
+             FROM internal_mail_recipients r
+             JOIN internal_mails m ON m.id = r.mail_id
+             JOIN users u ON u.id = m.sender_id
+             WHERE r.recipient_id = ? AND r.deleted_by_recipient = 0
+             ORDER BY (r.read_at IS NULL) DESC, m.id DESC
+             LIMIT 200",
+            [$uid]
         )->fetchAll();
         $unread = 0;
         foreach ($rows as $r) {
-            if (empty($r['opened_at'])) $unread++;
+            if (empty($r['read_at'])) $unread++;
         }
-        Response::json(['ok' => true, 'data' => $rows, 'unread' => $unread, 'has_email' => true]);
+        Response::json(['ok' => true, 'data' => $rows, 'unread' => $unread]);
     }
 
-    /** تفاصيل رسالة بريد واحدة؛ تُعلَّم كمقروءة تلقائياً عند فتحها */
-    public function mailShow(string $id): void
+    /** البريد الداخلي: صندوق الصادر — الرسائل التي أرسلها المستخدم الحالي */
+    public function mailSent(): void
     {
-        $emails = $this->currentUserEmails();
-        if (empty($emails)) {
-            Response::json(['ok' => false, 'error' => 'لا يوجد بريد إلكتروني مرتبط بحسابك'], 404);
+        $uid = ApiAuth::id();
+        $rows = Database::query(
+            "SELECT m.id, m.subject, m.body, m.created_at,
+                    (SELECT GROUP_CONCAT(u2.full_name SEPARATOR '، ')
+                       FROM internal_mail_recipients r2 JOIN users u2 ON u2.id = r2.recipient_id
+                      WHERE r2.mail_id = m.id) AS recipients_names
+             FROM internal_mails m
+             WHERE m.sender_id = ? AND m.deleted_by_sender = 0
+             ORDER BY m.id DESC
+             LIMIT 200",
+            [$uid]
+        )->fetchAll();
+        Response::json(['ok' => true, 'data' => $rows]);
+    }
+
+    /** قائمة مستخدمي النظام لاختيار مستلمي رسالة بريد داخلية جديدة */
+    public function mailUsers(): void
+    {
+        $uid = ApiAuth::id();
+        $rows = Database::query(
+            "SELECT id, full_name FROM users WHERE id != ? AND is_active = 1 ORDER BY full_name",
+            [$uid]
+        )->fetchAll();
+        Response::json(['ok' => true, 'data' => $rows]);
+    }
+
+    /** إرسال رسالة بريد داخلية جديدة (أو رد) لمستلم واحد أو أكثر */
+    public function mailCompose(): void
+    {
+        $uid = ApiAuth::id();
+        $b = $this->body();
+        $subject = trim((string)($b['subject'] ?? ''));
+        $bodyText = trim((string)($b['body'] ?? ''));
+        $recipients = array_values(array_unique(array_filter(array_map('intval', (array)($b['recipient_ids'] ?? [])))));
+        if ($subject === '' || $bodyText === '') {
+            Response::json(['ok' => false, 'error' => 'الموضوع ونص الرسالة مطلوبان'], 422);
             return;
         }
-        $placeholders = implode(',', array_fill(0, count($emails), '?'));
+        if (!$recipients) {
+            Response::json(['ok' => false, 'error' => 'يجب اختيار مستلم واحد على الأقل'], 422);
+            return;
+        }
+        Database::query("INSERT INTO internal_mails (sender_id, subject, body) VALUES (?,?,?)", [$uid, $subject, $bodyText]);
+        $mailId = (int)Database::lastInsertId();
+        foreach ($recipients as $rid) {
+            if ($rid === $uid) continue;
+            Database::query("INSERT INTO internal_mail_recipients (mail_id, recipient_id) VALUES (?,?)", [$mailId, $rid]);
+        }
+        Response::json(['ok' => true, 'id' => $mailId]);
+    }
+
+    /** تفاصيل رسالة واردة؛ تُعلَّم كمقروءة تلقائياً عند فتحها */
+    public function mailShow(string $id): void
+    {
+        $uid = ApiAuth::id();
         $row = Database::query(
-            "SELECT * FROM notification_queue WHERE id = ? AND channel = 'email' AND LOWER(recipient) IN ($placeholders)",
-            array_merge([(int)$id], $emails)
+            "SELECT m.id, m.subject, m.body, m.created_at, m.sender_id, u.full_name AS sender_name,
+                    r.id AS recipient_row_id, r.read_at
+             FROM internal_mail_recipients r
+             JOIN internal_mails m ON m.id = r.mail_id
+             JOIN users u ON u.id = m.sender_id
+             WHERE m.id = ? AND r.recipient_id = ? AND r.deleted_by_recipient = 0",
+            [(int)$id, $uid]
         )->fetch();
         if (!$row) {
             Response::json(['ok' => false, 'error' => 'الرسالة غير موجودة'], 404);
             return;
         }
-        if (empty($row['opened_at'])) {
-            Database::query("UPDATE notification_queue SET opened_at = NOW() WHERE id = ?", [(int)$id]);
-            $row['opened_at'] = date('Y-m-d H:i:s');
+        if (empty($row['read_at'])) {
+            Database::query("UPDATE internal_mail_recipients SET read_at = NOW() WHERE id = ?", [(int)$row['recipient_row_id']]);
+            $row['read_at'] = date('Y-m-d H:i:s');
         }
         Response::json(['ok' => true, 'data' => $row]);
     }
 
-    /** تعليم رسالة بريد كمقروءة */
+    /** تعليم رسالة واردة كمقروءة */
     public function mailRead(string $id): void
     {
-        $emails = $this->currentUserEmails();
-        if (!empty($emails)) {
-            $placeholders = implode(',', array_fill(0, count($emails), '?'));
-            Database::query(
-                "UPDATE notification_queue SET opened_at = NOW()
-                 WHERE id = ? AND channel = 'email' AND opened_at IS NULL AND LOWER(recipient) IN ($placeholders)",
-                array_merge([(int)$id], $emails)
-            );
-        }
+        $uid = ApiAuth::id();
+        Database::query(
+            "UPDATE internal_mail_recipients SET read_at = NOW()
+             WHERE mail_id = ? AND recipient_id = ? AND read_at IS NULL",
+            [(int)$id, $uid]
+        );
         Response::json(['ok' => true]);
     }
 
-    /** تعليم كل رسائل البريد كمقروءة */
+    /** تعليم كل الرسائل الواردة كمقروءة */
     public function mailReadAll(): void
     {
-        $emails = $this->currentUserEmails();
-        if (!empty($emails)) {
-            $placeholders = implode(',', array_fill(0, count($emails), '?'));
-            Database::query(
-                "UPDATE notification_queue SET opened_at = NOW()
-                 WHERE channel = 'email' AND opened_at IS NULL AND LOWER(recipient) IN ($placeholders)",
-                $emails
-            );
-        }
+        $uid = ApiAuth::id();
+        Database::query(
+            "UPDATE internal_mail_recipients SET read_at = NOW() WHERE recipient_id = ? AND read_at IS NULL",
+            [$uid]
+        );
         Response::json(['ok' => true]);
     }
+
+    /** حذف رسالة من صندوق الوارد (حذف خاص بالمستلم فقط، لا يحذف نسخة المُرسل) */
+    public function mailDelete(string $id): void
+    {
+        $uid = ApiAuth::id();
+        Database::query(
+            "UPDATE internal_mail_recipients SET deleted_by_recipient = 1 WHERE mail_id = ? AND recipient_id = ?",
+            [(int)$id, $uid]
+        );
+        Response::json(['ok' => true]);
+    }
+
+    /** حذف رسالة من صندوق الصادر (حذف خاص بالمُرسل فقط) */
+    public function mailDeleteSent(string $id): void
+    {
+        $uid = ApiAuth::id();
+        Database::query(
+            "UPDATE internal_mails SET deleted_by_sender = 1 WHERE id = ? AND sender_id = ?",
+            [(int)$id, $uid]
+        );
+        Response::json(['ok' => true]);
+    }
+
 
     public function approvals(): void
     {

@@ -1,17 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../core/data/cached_repository.dart';
 import '../../core/network/api_client.dart';
-import '../../core/utils/notification_router.dart';
 import '../../core/locale/locale_provider.dart';
 import '../../core/locale/app_strings.dart';
 import '../../shared/widgets/offline_banner.dart';
+import 'compose_mail_screen.dart';
 
-/// صندوق البريد الخاص بالمستخدم (البريد/Mail): يعرض كل الرسائل الإلكترونية
-/// المُرسلة من النظام والموجّهة تحديداً لبريد المستخدم الحالي (من حساب
-/// المستخدم أو من ملفه الوظيفي)، متاح لكل مستخدمي التطبيق في جميع الأقسام
-/// بلا أي شرط صلاحية.
+/// البريد الداخلي: رسائل حقيقية بين مستخدمي النظام (إرسال/استقبال/رد)،
+/// متاح لكل مستخدمي التطبيق في جميع الأقسام بلا أي شرط صلاحية.
 class MailScreen extends StatefulWidget {
   const MailScreen({super.key});
 
@@ -19,44 +16,79 @@ class MailScreen extends StatefulWidget {
   State<MailScreen> createState() => _MailScreenState();
 }
 
-class _MailScreenState extends State<MailScreen> {
-  bool _loading = true;
-  String? _error;
+class _MailScreenState extends State<MailScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+  bool _loadingInbox = true;
+  bool _loadingSent = true;
+  String? _inboxError;
+  String? _sentError;
   String? _offlineNotice;
-  List<dynamic> _items = [];
-  bool _noEmail = false;
+  List<dynamic> _inbox = [];
+  List<dynamic> _sent = [];
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _tabController = TabController(length: 2, vsync: this);
+    _loadInbox();
+    _loadSent();
   }
 
-  Future<void> _load() async {
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadInbox() async {
     setState(() {
-      _loading = true;
-      _error = null;
+      _loadingInbox = true;
+      _inboxError = null;
     });
     try {
       final repo = context.read<CachedRepository>();
-      final res = await repo.getJson('/mail', 'mail');
+      final res = await repo.getJson('/mail', 'mail_inbox');
       final body = res.data as Map<String, dynamic>;
       if (!mounted) return;
       setState(() {
-        _items = (body['data'] as List?) ?? [];
+        _inbox = (body['data'] as List?) ?? [];
         _offlineNotice = res.fromCache ? res.errorMessage : null;
-        _noEmail = (body['has_email'] as bool?) == false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(
-        () => _error = AppStrings.t(
+        () => _inboxError = AppStrings.t(
           'mail_load_error',
           context.read<LocaleProvider>().locale.languageCode,
         ),
       );
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() => _loadingInbox = false);
+    }
+  }
+
+  Future<void> _loadSent() async {
+    setState(() {
+      _loadingSent = true;
+      _sentError = null;
+    });
+    try {
+      final repo = context.read<CachedRepository>();
+      final res = await repo.getJson('/mail/sent', 'mail_sent');
+      final body = res.data as Map<String, dynamic>;
+      if (!mounted) return;
+      setState(() => _sent = (body['data'] as List?) ?? []);
+    } catch (e) {
+      if (!mounted) return;
+      setState(
+        () => _sentError = AppStrings.t(
+          'mail_load_error',
+          context.read<LocaleProvider>().locale.languageCode,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _loadingSent = false);
     }
   }
 
@@ -67,46 +99,69 @@ class _MailScreenState extends State<MailScreen> {
     } catch (_) {}
   }
 
-  Future<void> _markAllRead() async {
+  Future<void> _deleteInbox(int id) async {
     final api = context.read<ApiClient>();
     try {
-      await api.post('/mail/read-all');
+      await api.post('/mail/$id/delete');
       if (!mounted) return;
-      setState(() {
-        for (final m in _items) {
-          (m as Map)['opened_at'] = (m)['opened_at'] ?? DateTime.now().toIso8601String();
-        }
-      });
+      setState(() => _inbox.removeWhere((m) => (m as Map)['id'] == id));
     } catch (_) {}
   }
 
-  String _statusLabel(String? status, String Function(String) t) {
-    switch (status) {
-      case 'sent':
-        return t('mail_status_sent');
-      case 'failed':
-        return t('mail_status_failed');
-      default:
-        return t('mail_status_pending');
+  Future<void> _deleteSent(int id) async {
+    final api = context.read<ApiClient>();
+    try {
+      await api.post('/mail/sent/$id/delete');
+      if (!mounted) return;
+      setState(() => _sent.removeWhere((m) => (m as Map)['id'] == id));
+    } catch (_) {}
+  }
+
+  Future<bool> _confirmDelete(String Function(String) t) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(t('mail_delete_confirm_title')),
+        content: Text(t('mail_delete_confirm_body')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(t('mail_close')),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: Text(t('mail_delete_btn')),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
+
+  void _openCompose({int? replyToId, String? replyToName, String? subject}) async {
+    final sent = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => ComposeMailScreen(
+          initialRecipientId: replyToId,
+          initialRecipientName: replyToName,
+          initialSubject: subject,
+        ),
+      ),
+    );
+    if (sent == true) {
+      _loadSent();
+      _tabController.animateTo(1);
     }
   }
 
-  void _showDetail(Map<String, dynamic> m, String Function(String) t) async {
+  void _showInboxDetail(Map<String, dynamic> m, String Function(String) t) async {
     final id = m['id'] as int?;
-    if (id != null && (m['opened_at'] == null)) {
+    if (id != null && m['read_at'] == null) {
       await _markRead(id);
-      setState(() => m['opened_at'] = DateTime.now().toIso8601String());
+      setState(() => m['read_at'] = DateTime.now().toIso8601String());
     }
     if (!mounted) return;
-    final entityType = m['entity_type']?.toString();
-    final actionType = m['action_type']?.toString();
-    final link = m['link']?.toString();
-    final targetRoute = resolveNotificationRoute(
-      entityType: entityType,
-      actionType: actionType,
-      link: link,
-    );
-
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -114,9 +169,7 @@ class _MailScreenState extends State<MailScreen> {
           children: [
             const Icon(Icons.mail_outline),
             const SizedBox(width: 8),
-            Expanded(
-              child: Text(m['subject']?.toString() ?? t('mail_detail_title')),
-            ),
+            Expanded(child: Text(m['subject']?.toString() ?? '')),
           ],
         ),
         content: SingleChildScrollView(
@@ -124,36 +177,80 @@ class _MailScreenState extends State<MailScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                m['body']?.toString() ?? '',
-                style: const TextStyle(fontSize: 15),
-              ),
+              _detailRow(t('mail_from_label'), m['sender_name']?.toString() ?? ''),
+              _detailRow(t('mail_date_label'), m['created_at']?.toString() ?? ''),
               const Divider(height: 24),
-              _detailRow(t('mail_to_label'), m['recipient']?.toString() ?? ''),
-              _detailRow(
-                t('mail_date_label'),
-                m['created_at']?.toString() ?? '',
-              ),
-              _detailRow(
-                t('mail_status_label'),
-                _statusLabel(m['status']?.toString(), t),
-              ),
+              Text(m['body']?.toString() ?? '', style: const TextStyle(fontSize: 15)),
             ],
           ),
         ),
         actions: [
           TextButton(
+            onPressed: () async {
+              if (id == null) return;
+              Navigator.of(context).pop();
+              if (await _confirmDelete(t)) _deleteInbox(id);
+            },
+            child: Text(t('mail_delete_btn'), style: const TextStyle(color: Colors.red)),
+          ),
+          TextButton(
             onPressed: () => Navigator.of(context).pop(),
             child: Text(t('mail_close')),
           ),
-          if (targetRoute != '/notifications')
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                context.go(targetRoute);
-              },
-              child: Text(t('mail_open')),
-            ),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _openCompose(
+                replyToId: m['sender_id'] as int?,
+                replyToName: m['sender_name']?.toString(),
+                subject: 'Re: ${m['subject'] ?? ''}',
+              );
+            },
+            icon: const Icon(Icons.reply, size: 18),
+            label: Text(t('mail_reply_btn')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSentDetail(Map<String, dynamic> m, String Function(String) t) {
+    final id = m['id'] as int?;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.send_outlined),
+            const SizedBox(width: 8),
+            Expanded(child: Text(m['subject']?.toString() ?? '')),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _detailRow(t('mail_to_label'), m['recipients_names']?.toString() ?? ''),
+              _detailRow(t('mail_date_label'), m['created_at']?.toString() ?? ''),
+              const Divider(height: 24),
+              Text(m['body']?.toString() ?? '', style: const TextStyle(fontSize: 15)),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              if (id == null) return;
+              Navigator.of(context).pop();
+              if (await _confirmDelete(t)) _deleteSent(id);
+            },
+            child: Text(t('mail_delete_btn'), style: const TextStyle(color: Colors.red)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(t('mail_close')),
+          ),
         ],
       ),
     );
@@ -176,107 +273,122 @@ class _MailScreenState extends State<MailScreen> {
   Widget build(BuildContext context) {
     final lang = context.watch<LocaleProvider>().locale.languageCode;
     String t(String key) => AppStrings.t(key, lang);
-    final unread = _items
-        .cast<Map>()
-        .where((m) => m['opened_at'] == null)
-        .length;
+    final unread = _inbox.cast<Map>().where((m) => m['read_at'] == null).length;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(t('mail_title')),
-        actions: [
-          if (unread > 0)
-            IconButton(
-              icon: const Icon(Icons.mark_email_read_outlined),
-              tooltip: t('mail_mark_all_read'),
-              onPressed: _markAllRead,
-            ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: _load,
-        child: Column(
-          children: [
-            OfflineBanner(message: _offlineNotice),
-            Expanded(
-              child: AsyncStateView(
-                loading: _loading,
-                error: _error,
-                onRetry: _load,
-                child: _items.isEmpty
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: _noEmail
-                              ? Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(
-                                      Icons.mail_outline,
-                                      size: 48,
-                                      color: Colors.grey,
-                                    ),
-                                    const SizedBox(height: 12),
-                                    Text(
-                                      t('mail_no_email_title'),
-                                      textAlign: TextAlign.center,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      t('mail_no_email_body'),
-                                      textAlign: TextAlign.center,
-                                      style: const TextStyle(color: Colors.grey),
-                                    ),
-                                  ],
-                                )
-                              : Text(t('mail_empty')),
-                        ),
-                      )
-                    : ListView.separated(
-                        itemCount: _items.length,
-                        separatorBuilder: (a, b) => const Divider(height: 1),
-                        itemBuilder: (context, i) {
-                          final m = _items[i] as Map;
-                          final read = m['opened_at'] != null;
-                          return ListTile(
-                            leading: Icon(
-                              read ? Icons.mail_outline : Icons.mail,
-                              color: read
-                                  ? Colors.grey
-                                  : Theme.of(context).colorScheme.primary,
-                            ),
-                            title: Text(
-                              m['subject']?.toString() ?? '',
-                              style: TextStyle(
-                                fontWeight: read
-                                    ? FontWeight.normal
-                                    : FontWeight.bold,
-                              ),
-                            ),
-                            subtitle: Text(
-                              m['body']?.toString() ?? '',
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            trailing: Text(
-                              m['created_at']?.toString().split(' ').first ??
-                                  '',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: Colors.grey,
-                              ),
-                            ),
-                            onTap: () =>
-                                _showDetail(m.cast<String, dynamic>(), t),
-                          );
-                        },
-                      ),
-              ),
-            ),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: [
+            Tab(text: unread > 0 ? '${t('mail_inbox_tab')} ($unread)' : t('mail_inbox_tab')),
+            Tab(text: t('mail_sent_tab')),
           ],
         ),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _openCompose(),
+        icon: const Icon(Icons.edit),
+        label: Text(t('mail_compose_fab')),
+      ),
+      body: Column(
+        children: [
+          OfflineBanner(message: _offlineNotice),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                RefreshIndicator(
+                  onRefresh: _loadInbox,
+                  child: AsyncStateView(
+                    loading: _loadingInbox,
+                    error: _inboxError,
+                    onRetry: _loadInbox,
+                    child: _inbox.isEmpty
+                        ? ListView(
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.all(40),
+                                child: Center(child: Text(t('mail_empty'))),
+                              ),
+                            ],
+                          )
+                        : ListView.separated(
+                            itemCount: _inbox.length,
+                            separatorBuilder: (a, b) => const Divider(height: 1),
+                            itemBuilder: (context, i) {
+                              final m = _inbox[i] as Map;
+                              final read = m['read_at'] != null;
+                              return ListTile(
+                                leading: Icon(
+                                  read ? Icons.mail_outline : Icons.mail,
+                                  color: read
+                                      ? Colors.grey
+                                      : Theme.of(context).colorScheme.primary,
+                                ),
+                                title: Text(
+                                  m['subject']?.toString() ?? '',
+                                  style: TextStyle(
+                                    fontWeight: read ? FontWeight.normal : FontWeight.bold,
+                                  ),
+                                ),
+                                subtitle: Text(
+                                  '${m['sender_name'] ?? ''} — ${m['body'] ?? ''}',
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                trailing: Text(
+                                  m['created_at']?.toString().split(' ').first ?? '',
+                                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                ),
+                                onTap: () => _showInboxDetail(m.cast<String, dynamic>(), t),
+                              );
+                            },
+                          ),
+                  ),
+                ),
+                RefreshIndicator(
+                  onRefresh: _loadSent,
+                  child: AsyncStateView(
+                    loading: _loadingSent,
+                    error: _sentError,
+                    onRetry: _loadSent,
+                    child: _sent.isEmpty
+                        ? ListView(
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.all(40),
+                                child: Center(child: Text(t('mail_sent_empty'))),
+                              ),
+                            ],
+                          )
+                        : ListView.separated(
+                            itemCount: _sent.length,
+                            separatorBuilder: (a, b) => const Divider(height: 1),
+                            itemBuilder: (context, i) {
+                              final m = _sent[i] as Map;
+                              return ListTile(
+                                leading: const Icon(Icons.send_outlined, color: Colors.grey),
+                                title: Text(m['subject']?.toString() ?? ''),
+                                subtitle: Text(
+                                  '${t('mail_to_label')}: ${m['recipients_names'] ?? ''}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                trailing: Text(
+                                  m['created_at']?.toString().split(' ').first ?? '',
+                                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                ),
+                                onTap: () => _showSentDetail(m.cast<String, dynamic>(), t),
+                              );
+                            },
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
