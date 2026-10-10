@@ -862,18 +862,27 @@ class HrService
         $salaryReduction = self::salaryReductionTotal($employeeId, $period);
         $adjustedMonthlyBase = max(0.0, $base + $raises - $salaryReduction);
         $dailySalary = $adjustedMonthlyBase / 30;
-        $absenceDeduction = $absenceDays * $dailySalary;
         // قيمة تسوية أيام الدوام = عدد الأيام المعتمدة × الراتب اليومي الحالي (المشتق من الأساس المعدّل أعلاه)، وليس من قيمة مجمدة محفوظة وقت الإنشاء
         $workDaysSettlement = round($workDaysSettlementDays * $dailySalary, 2);
 
-        // الراتب الأساسي المستحق = الأساسي الاسمي بالكامل ناقص تخفيض الراتب المعتمد لهذه الفترة فقط.
-        // لا يُنسب (Pro-rata) حسب عدد الأيام المنقضية من الشهر الجاري حتى تاريخ الاحتساب، لأن الراتب شهري ثابت
-        // وليس أجراً يوميًا؛ أي غياب فعلي مؤكّد يُخصم مستقلاً عبر $absenceDeduction أدناه (حسب أيام الغياب الفعلية المنقضية فعلاً).
-        // (التناسب السابق بحسب expected_days/30 كان يُنقص الاستحقاقات إلى عدد أيام جزئي فقط عند إعادة توليد
-        // راتب الشهر الجاري قبل انتهائه، مما كان يُظهر إجمالي استحقاقات أقل بكثير من المستحق الفعلي.)
         $baseAfterReduction = max(0.0, $base - $salaryReduction);
         $accruedBase = $baseAfterReduction;
         $accruedRaises = $raises;
+        // غياب: يُخصم من الراتب الكامل فقط عند اكتمال الشهر (النموذج المعتمد طويلاً).
+        $absenceDeduction = $absenceDays * $dailySalary;
+
+        if ($isPartialMonth) {
+            // الشهر الجاري لم يكتمل بعد: إجمالي الاستحقاقات المتراكم حتى تاريخ الاحتساب =
+            // الراتب اليومي المعدّل (الأساسي + الزيادات − التخفيض)/30 × عدد الأيام المستحقة فعلياً حتى الآن
+            // (أيام الدوام الفعلي من البصمة + أيام الإجازة المعتمدة المدفوعة)؛ بدلاً من نسبة أيام العمل "المتوقعة" التي
+            // كانت تستبعد خطأً دوام العطلة الأسبوعية. الغياب وإجازة بدون راتب وأي أيام مستقبلية لم تحدث
+            // بعد غير محتسبة ضمن هذه الأيام أصلاً، فلا حاجة لخصم غياب منفصل مرة أخرى (يُصفّر $absenceDeduction أدناه لتجنّب ازدواج الخصم).
+            $payableDaysSoFar = (int) $attendance['working_days'] + (int) $attendance['leave_days'];
+            $dayFraction = $payableDaysSoFar / 30;
+            $accruedBase = round($baseAfterReduction * $dayFraction, 2);
+            $accruedRaises = round($raises * $dayFraction, 2);
+            $absenceDeduction = 0.0;
+        }
 
         // البدلات الثابتة للموظف
         $allowances = (float) Database::query(
