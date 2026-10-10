@@ -857,7 +857,7 @@ class HrService
         $attendance = self::calculateAttendanceSummary($employeeId, $period, $effectiveAsOfDate);
         $absenceDays = (int) $attendance['deducted_days'];
 
-        // الأساس المعدّل الشهري = (الأساسي الاسمي + الزيادات) − تخفيضات الراتب المعتمدة السارية حتى نهاية الفترة
+        // الأساس المعدّل الشهري = (الأساسي الاسمي + الزيادات) − تخفيض الراتب المعتمد الخاص بهذه الفترة فقط (لا يتراكم من الأشهر السابقة)
         // ومعدل اليومية يُشتق منه ويُستخدم في خصم الغياب وكل المكونات المعتمدة على المعدل (إضافي، تسوية أيام دوام...)
         $salaryReduction = self::salaryReductionTotal($employeeId, $period);
         $adjustedMonthlyBase = max(0.0, $base + $raises - $salaryReduction);
@@ -1862,8 +1862,8 @@ class HrService
                 self::generatePayroll((int)$adj['employee_id'], $adjPeriod, $approverId);
             }
 
-            // ملاحظة: "تخفيض راتب" لم يعد يُعدّل base_salary نهائياً في ملف الموظف؛
-            // يُحتسب تراكمياً ضمن الأساس المعدّل في calculatePayrollComponents()،
+            // ملاحظة: "تخفيض راتب" لا يُعدّل base_salary نهائياً في ملف الموظف؛
+            // يُحتسب ضمن الأساس المعدّل في calculatePayrollComponents() لشهره المحدد (period/effective_date) حصرياً دون تراكم للأشهر اللاحقة،
             // وإعادة توليد المسودة أعلاه تعكسه فوراً (والإلغاء يُخرجه تلقائياً من الاحتساب)
         }
 
@@ -3524,22 +3524,24 @@ class HrService
      * سعر الساعة الإضافية يُحسب بناءً على أيام الدوام المتوقعة (مع مراعاة العطلة الأسبوعية).
      */
     /**
-     * مجموع تخفيضات الراتب المعتمدة السارية للموظف حتى نهاية الفترة (تراكمي من سريان كل تخفيض؛
-     * الإلغاء أو الرفض يُخرجه تلقائياً لأن الجمع يقتصر على المعتمدة)
+     * مجموع تخفيضات الراتب المعتمدة الخاصة بفترة الاحتساب المحددة فقط (شهر واحد، وليس تراكمياً).
+     * التخفيض يطبَّق حصرياً على الشهر المستهدف بـ period (أو الذي يقع effective_date ضمنه عند عدم تحديد period)؛
+     * الإلغاء أو الرفض يُخرجه تلقائياً لأن الجمع يقتصر على المعتمدة، ولا يُحمَّل على أي شهر غير شهره المحدد.
      */
     public static function salaryReductionTotal(int $employeeId, string $period): float
     {
-        $periodEnd = date('Y-m-t', strtotime($period . '-01'));
+        $periodStart = $period . '-01';
+        $periodEnd = date('Y-m-t', strtotime($periodStart));
         return (float) Database::query(
             "SELECT COALESCE(SUM(amount),0) FROM hr_adjustments
              WHERE employee_id = ? AND adjustment_type = 'salary_reduction' AND status = 'approved'
-               AND ((period IS NOT NULL AND period <= ?) OR (period IS NULL AND effective_date <= ?))",
-            [$employeeId, $period, $periodEnd]
+               AND (period = ? OR (period IS NULL AND effective_date BETWEEN ? AND ?))",
+            [$employeeId, $period, $periodStart, $periodEnd]
         )->fetchColumn();
     }
 
     /**
-     * الأساس الشهري المعدّل = (الأساسي الاسمي + زيادات الفترة) − تخفيضات الراتب السارية.
+     * الأساس الشهري المعدّل = (الأساسي الاسمي + زيادات الفترة) − تخفيض راتب الفترة نفسها فقط (غير تراكمي).
      * المرجع الموحد لاشتقاق معدلات اليومية/الساعة في الرواتب والإضافي وتسويات الأيام.
      */
     public static function adjustedMonthlyBase(int $employeeId, string $period): float
