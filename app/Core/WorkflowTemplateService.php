@@ -10,12 +10,13 @@ class WorkflowTemplateService
 
     public static function getTemplatesForUser(int $roleId): array
     {
-        // القوالب المتاحة للمستخدم:
-        // 1. الدور يملك صراحةً can_create=1 في template_allowed_roles
-        // 2. أو الدور إداري (مستوى >= 60 أو اسم الدور يحتوي على "مدير").
-        //    بعض قواعد البيانات القديمة تمنح المدير صلاحية الموافقة فقط ولا
-        //    تحتوي على صف can_create لكل قالب، لذلك لا يجب أن تعيد الشاشة قائمة فارغة.
-        // 3. أو يملك المستخدم صلاحية الموبايل/الإنشاء المعلنة في واجهة التطبيق.
+        // القوالب (أنواع الطلبات) المتاحة للمستخدم مرتبطة حصراً بصلاحية دوره:
+        // 1. الدور يملك صراحةً can_create=1 لهذا القالب تحديداً في template_allowed_roles
+        //    (يُدار من شاشة "تعديل الدور" بلوحة التحكم، وهو المصدر الوحيد لظهور
+        //    أو اختفاء نوع الطلب لهذا الدور بلا أي استثناء عام مخفي).
+        // 2. أو المستخدم "مدير النظام" (صلاحية كاملة بلا شرط، مثل بقية صلاحيات النظام).
+        // 3. طلب الإجازة (hr_leave) وطلب السلفة (hr_advance) متاحان دائماً لكل موظف بغض
+        //    النظر عن إعدادات القالب، لأنهما حق ذاتي (Self-Service) وليسا مرتبطين بصلاحية دور محددة.
         return Database::query(
             "SELECT DISTINCT t.* FROM approval_templates t
              LEFT JOIN template_allowed_roles tar ON tar.template_id = t.id AND tar.role_id = ?
@@ -23,20 +24,11 @@ class WorkflowTemplateService
              WHERE t.is_active = 1
                AND (
                  tar.can_create = 1
-                 OR (
-                   (
-                     COALESCE(r.level, 0) >= 60
-                     OR r.name LIKE '%مدير%'
-                     OR EXISTS (
-                       SELECT 1 FROM role_permissions rp
-                       JOIN permissions p ON p.id = rp.permission_id
-                       WHERE rp.role_id = ? AND p.code IN ('workflow.create', 'mobile.approvals')
-                     )
-                   )
-                 )
+                 OR r.name = 'مدير النظام'
+                 OR t.code IN ('hr_leave', 'hr_advance')
                )
              ORDER BY t.name",
-            [$roleId, $roleId, $roleId]
+            [$roleId, $roleId]
         )->fetchAll();
     }
 

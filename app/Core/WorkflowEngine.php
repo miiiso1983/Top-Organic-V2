@@ -36,6 +36,14 @@ class WorkflowEngine
         }
     }
 
+    /**
+     * هل يملك هذا الدور صلاحية إنشاء طلب من هذا القالب تحديداً؟
+     * مرتبط حصرياً بـ template_allowed_roles.can_create (يُدار من شاشة "تعديل الدور")،
+     * باستثناء: مدير النظام (صلاحية كاملة بلا شرط كبقية صلاحيات النظام)، وطلب
+     * الإجازة/السلفة (حق ذاتي لكل موظف بصرف النظر عن إعدادات القالب).
+     * لا يوجد أي تجاوز عام عبر مستوى الدور أو اسمه أو صلاحية عامة؛ إن لم يُمنح
+     * الدور صلاحية هذا القالب تحديداً فلن يستطيع إنشاء طلب منه.
+     */
     public static function canCreate(int $templateId, int $roleId): bool
     {
         return (bool) Database::query(
@@ -48,16 +56,11 @@ class WorkflowEngine
                AND t.is_active = 1
                AND (
                  tar.can_create = 1
-                 OR COALESCE(r.level, 0) >= 60
-                 OR r.name LIKE '%مدير%'
-                 OR EXISTS (
-                   SELECT 1 FROM role_permissions rp
-                   JOIN permissions p ON p.id = rp.permission_id
-                   WHERE rp.role_id = ? AND p.code IN ('workflow.create', 'mobile.approvals')
-                 )
+                 OR r.name = 'مدير النظام'
+                 OR t.code IN ('hr_leave', 'hr_advance')
                )
              LIMIT 1",
-            [$roleId, $roleId, $templateId, $roleId]
+            [$roleId, $roleId, $templateId]
         )->fetch();
     }
 
@@ -194,6 +197,17 @@ class WorkflowEngine
         }
     }
 
+    /** يتحقق من وجود سبب/ملاحظات في طلب نسيان البصمة (دفاع عميق عن الاكتفاء
+     *  بسمة required في النموذج على الواجهة فقط، لمنع إرسال الطلب بدون سبب عبر API مباشر) */
+    private static function validateMissingAttendanceRequest(int $templateId, array $payload): void
+    {
+        $template = WorkflowTemplateService::getTemplate($templateId);
+        if (!$template || ($template['code'] ?? '') !== 'hr_missing_attendance') return;
+        if (trim((string)($payload['reason'] ?? '')) === '') {
+            throw new \RuntimeException('سبب/ملاحظات طلب نسيان البصمة مطلوب، يرجى كتابة السبب');
+        }
+    }
+
     private static function fillAdvanceDefaults(array $template, array $payload): array
     {
         if (($template['code'] ?? '') !== 'hr_advance') return $payload;
@@ -218,6 +232,7 @@ class WorkflowEngine
         $payload = self::fillAdvanceDefaults($template, self::extractPayload($template['fields'], $data));
         self::validateAdvanceRequest($templateId, $payload, (int)($user['employee_id'] ?? 0), null);
         self::validateLeaveRequest($templateId, $payload);
+        self::validateMissingAttendanceRequest($templateId, $payload);
         $amount = self::extractAmount($template, $payload);
         $title = (string)($data['title'] ?? ($template['name'] . ' - ' . date('Y-m-d')));
         $no = Helpers::docNumber('REQ', 'requests', 'request_no');
@@ -251,6 +266,7 @@ class WorkflowEngine
         $payload = json_decode($req['data_json'] ?? '{}', true);
         self::validateAdvanceRequest((int)$req['template_id'], $payload, (int)($req['requester_employee_id'] ?? 0), $requestId);
         self::validateLeaveRequest((int)$req['template_id'], $payload);
+        self::validateMissingAttendanceRequest((int)$req['template_id'], $payload);
 
         $status = $req['status'] === 'returned_for_edit' ? 'resubmitted' : 'submitted';
         self::logHistory($requestId, $status, null, $userId, '');
@@ -343,6 +359,7 @@ class WorkflowEngine
 
         $payload = self::fillAdvanceDefaults($req, self::extractPayload($req['fields'], $data));
         self::validateAdvanceRequest((int)$req['template_id'], $payload, (int)($req['requester_employee_id'] ?? 0), $requestId);
+        self::validateMissingAttendanceRequest((int)$req['template_id'], $payload);
         $amount = self::extractAmount($req, $payload);
         $title = (string)($data['title'] ?? $req['title']);
         $notes = (string)($data['notes'] ?? '');

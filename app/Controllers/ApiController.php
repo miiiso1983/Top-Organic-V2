@@ -2916,9 +2916,11 @@ class ApiController extends Controller
         $allowedTemplates = WorkflowTemplateService::getTemplatesForUser($roleId);
         $allowedIds = array_flip(array_map('intval', array_column($allowedTemplates, 'id')));
 
-        // جميع القوالب النشطة؛ الإجازة (hr_leave) والسلفة (hr_advance) ونسيان البصمة (hr_missing_attendance)
-        // تظهر دائمًا لجميع الموظفين؛ بقية القوالب تظهر فقط إذا كان المستخدم يملك صلاحية إنشائها.
-        $alwaysVisibleCodes = ['hr_leave', 'hr_advance', 'hr_missing_attendance'];
+        // جميع القوالب النشطة؛ الإجازة (hr_leave) والسلفة (hr_advance) تظهران دائماً لجميع
+        // الموظفين (حق ذاتي Self-Service)؛ بقية القوالب بما فيها نسيان البصمة
+        // (hr_missing_attendance) تظهر فقط إذا كان المستخدم يملك صلاحية إنشائها صراحةً
+        // (عبر شاشة "تعديل الدور")، ليكون ظهور أي نوع طلب مرتبطاً بالصلاحيات فعلياً.
+        $alwaysVisibleCodes = ['hr_leave', 'hr_advance'];
         $allActive = Database::query("SELECT * FROM approval_templates WHERE is_active = 1 ORDER BY name")->fetchAll();
         $templates = [];
         foreach ($allActive as $t) {
