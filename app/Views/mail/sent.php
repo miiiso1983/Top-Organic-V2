@@ -23,7 +23,7 @@
   <?php foreach ($rows as $m): ?>
   <div class="mb-item">
     <div style="flex:1;cursor:pointer" onclick="location.href='/mail/sent/<?= (int)$m['id'] ?>'">
-      <div class="ttl"><?= Helpers::e($m['subject']) ?></div>
+      <div class="ttl"><?= Helpers::e($m['subject']) ?> <?php if (!empty($m['attachments_count'])): ?><i class="fa-solid fa-paperclip" style="font-size:11px;color:#6b7280" title="<?= (int)$m['attachments_count'] ?> مرفق"></i><?php endif; ?></div>
       <div class="frm">إلى: <?= Helpers::e($m['recipients_names'] ?: '—') ?></div>
       <div class="bdy"><?= Helpers::e(mb_substr($m['body'], 0, 120)) ?><?= mb_strlen($m['body']) > 120 ? '…' : '' ?></div>
     </div>

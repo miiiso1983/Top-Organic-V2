@@ -1,7 +1,7 @@
 <?php
 namespace App\Controllers;
 
-use App\Core\{Controller, Database, Response, ApiAuth, ApprovalService, HrWorkflowService, StockService, Helpers, Auth, MenuService, ImageUpload, WorkflowEngine, WorkflowTemplateService, UnitConversionService, BarcodeService, ProductionService, MaterialRequestService, ProcurementReportService, NotificationService, HrService, ReservationService, AccountingService};
+use App\Core\{Controller, Database, Response, ApiAuth, ApprovalService, HrWorkflowService, StockService, Helpers, Auth, MenuService, ImageUpload, WorkflowEngine, WorkflowTemplateService, UnitConversionService, BarcodeService, ProductionService, MaterialRequestService, ProcurementReportService, NotificationService, HrService, ReservationService, AccountingService, MailService};
 use App\Core\Workflow\EntityRegistry;
 
 /**
@@ -177,7 +177,8 @@ class ApiController extends Controller
     {
         $uid = ApiAuth::id();
         $rows = Database::query(
-            "SELECT m.id, m.subject, m.body, m.created_at, m.sender_id, u.full_name AS sender_name, r.read_at
+            "SELECT m.id, m.subject, m.body, m.created_at, m.sender_id, u.full_name AS sender_name, r.read_at,
+                    (SELECT COUNT(*) FROM internal_mail_attachments WHERE mail_id = m.id) AS attachments_count
              FROM internal_mail_recipients r
              JOIN internal_mails m ON m.id = r.mail_id
              JOIN users u ON u.id = m.sender_id
@@ -199,6 +200,7 @@ class ApiController extends Controller
         $uid = ApiAuth::id();
         $rows = Database::query(
             "SELECT m.id, m.subject, m.body, m.created_at,
+                    (SELECT COUNT(*) FROM internal_mail_attachments WHERE mail_id = m.id) AS attachments_count,
                     (SELECT GROUP_CONCAT(u2.full_name SEPARATOR '، ')
                        FROM internal_mail_recipients r2 JOIN users u2 ON u2.id = r2.recipient_id
                       WHERE r2.mail_id = m.id) AS recipients_names
@@ -222,27 +224,136 @@ class ApiController extends Controller
         Response::json(['ok' => true, 'data' => $rows]);
     }
 
-    /** إرسال رسالة بريد داخلية جديدة (أو رد) لمستلم واحد أو أكثر */
+    /** قائمة الأقسام النشطة لاختيار قسم كامل عند إرسال رسالة بريد داخلية */
+    public function mailDepartments(): void
+    {
+        $rows = Database::query("SELECT id, name FROM departments WHERE is_active = 1 ORDER BY name")->fetchAll();
+        Response::json(['ok' => true, 'data' => $rows]);
+    }
+
+    /** قائمة مجموعات البريد (قوائم توزيع مخصصة) المتاحة للاختيار عند الإرسال */
+    public function mailGroups(): void
+    {
+        $uid = ApiAuth::id();
+        $rows = Database::query(
+            "SELECT g.id, g.name, g.created_by,
+                    (SELECT COUNT(*) FROM mail_group_members WHERE group_id = g.id) AS members_count
+             FROM mail_groups g WHERE g.is_active = 1 ORDER BY g.name"
+        )->fetchAll();
+        foreach ($rows as &$r) {
+            $r['is_mine'] = (int)$r['created_by'] === $uid;
+        }
+        unset($r);
+        Response::json(['ok' => true, 'data' => $rows]);
+    }
+
+    /** تفاصيل مجموعة بريد (مع أعضائها) — لشاشة التعديل في الموبايل */
+    public function mailGroupShow(string $id): void
+    {
+        $group = Database::query("SELECT * FROM mail_groups WHERE id = ? AND is_active = 1", [(int)$id])->fetch();
+        if (!$group) {
+            Response::json(['ok' => false, 'error' => 'المجموعة غير موجودة'], 404);
+            return;
+        }
+        $memberIds = array_map('intval', array_column(
+            Database::query("SELECT user_id FROM mail_group_members WHERE group_id = ?", [(int)$id])->fetchAll(),
+            'user_id'
+        ));
+        $group['member_ids'] = $memberIds;
+        $group['is_mine'] = (int)$group['created_by'] === ApiAuth::id();
+        Response::json(['ok' => true, 'data' => $group]);
+    }
+
+    /** إنشاء مجموعة بريد جديدة من الموبايل */
+    public function mailGroupStore(): void
+    {
+        $uid = ApiAuth::id();
+        $b = $this->body();
+        $name = trim((string)($b['name'] ?? ''));
+        $memberIds = array_values(array_unique(array_filter(array_map('intval', (array)($b['member_ids'] ?? [])))));
+        if ($name === '') {
+            Response::json(['ok' => false, 'error' => 'اسم المجموعة مطلوب'], 422);
+            return;
+        }
+        Database::query("INSERT INTO mail_groups (name, created_by) VALUES (?,?)", [$name, $uid]);
+        $groupId = (int)Database::lastInsertId();
+        foreach ($memberIds as $mid) {
+            if ($mid === $uid) continue;
+            Database::query("INSERT IGNORE INTO mail_group_members (group_id, user_id) VALUES (?,?)", [$groupId, $mid]);
+        }
+        Response::json(['ok' => true, 'id' => $groupId]);
+    }
+
+    /** تحديث مجموعة بريد — مقصور على منشئها */
+    public function mailGroupUpdate(string $id): void
+    {
+        $uid = ApiAuth::id();
+        $group = Database::query("SELECT * FROM mail_groups WHERE id = ? AND is_active = 1", [(int)$id])->fetch();
+        if (!$group || (int)$group['created_by'] !== $uid) {
+            Response::json(['ok' => false, 'error' => 'غير مصرح بتعديل هذه المجموعة'], 403);
+            return;
+        }
+        $b = $this->body();
+        $name = trim((string)($b['name'] ?? ''));
+        $memberIds = array_values(array_unique(array_filter(array_map('intval', (array)($b['member_ids'] ?? [])))));
+        if ($name === '') {
+            Response::json(['ok' => false, 'error' => 'اسم المجموعة مطلوب'], 422);
+            return;
+        }
+        Database::query("UPDATE mail_groups SET name = ? WHERE id = ?", [$name, (int)$id]);
+        Database::query("DELETE FROM mail_group_members WHERE group_id = ?", [(int)$id]);
+        foreach ($memberIds as $mid) {
+            if ($mid === $uid) continue;
+            Database::query("INSERT IGNORE INTO mail_group_members (group_id, user_id) VALUES (?,?)", [(int)$id, $mid]);
+        }
+        Response::json(['ok' => true]);
+    }
+
+    /** حذف مجموعة بريد — مقصور على منشئها */
+    public function mailGroupDelete(string $id): void
+    {
+        $uid = ApiAuth::id();
+        $group = Database::query("SELECT * FROM mail_groups WHERE id = ?", [(int)$id])->fetch();
+        if (!$group || (int)$group['created_by'] !== $uid) {
+            Response::json(['ok' => false, 'error' => 'غير مصرح بحذف هذه المجموعة'], 403);
+            return;
+        }
+        Database::query("UPDATE mail_groups SET is_active = 0 WHERE id = ?", [(int)$id]);
+        Response::json(['ok' => true]);
+    }
+
+    /**
+     * إرسال رسالة بريد داخلية جديدة (أو رد) لمستلم واحد أو أكثر */
     public function mailCompose(): void
     {
         $uid = ApiAuth::id();
         $b = $this->body();
         $subject = trim((string)($b['subject'] ?? ''));
         $bodyText = trim((string)($b['body'] ?? ''));
-        $recipients = array_values(array_unique(array_filter(array_map('intval', (array)($b['recipient_ids'] ?? [])))));
+        $resolved = MailService::resolveRecipients(
+            (array)($b['recipient_ids'] ?? []),
+            (array)($b['department_ids'] ?? []),
+            (array)($b['group_ids'] ?? []),
+            $uid
+        );
         if ($subject === '' || $bodyText === '') {
             Response::json(['ok' => false, 'error' => 'الموضوع ونص الرسالة مطلوبان'], 422);
             return;
         }
-        if (!$recipients) {
-            Response::json(['ok' => false, 'error' => 'يجب اختيار مستلم واحد على الأقل'], 422);
+        if (!$resolved['recipients']) {
+            Response::json(['ok' => false, 'error' => 'يجب اختيار مستلم واحد أو قسم أو مجموعة على الأقل'], 422);
             return;
         }
-        Database::query("INSERT INTO internal_mails (sender_id, subject, body) VALUES (?,?,?)", [$uid, $subject, $bodyText]);
-        $mailId = (int)Database::lastInsertId();
-        foreach ($recipients as $rid) {
-            if ($rid === $uid) continue;
-            Database::query("INSERT INTO internal_mail_recipients (mail_id, recipient_id) VALUES (?,?)", [$mailId, $rid]);
+        // معاملة واحدة لضمان عدم إرسال الرسالة فعلياً للمستلمين إذا فشل رفع أحد المرفقات
+        Database::beginTransaction();
+        try {
+            $mailId = MailService::createMail($uid, $subject, $bodyText, $resolved['recipients'], $resolved['targets']);
+            MailService::saveAttachmentsFromRequest($mailId);
+            Database::commit();
+        } catch (\Throwable $e) {
+            Database::rollBack();
+            Response::json(['ok' => false, 'error' => $e->getMessage()], 422);
+            return;
         }
         Response::json(['ok' => true, 'id' => $mailId]);
     }
@@ -268,6 +379,30 @@ class ApiController extends Controller
             Database::query("UPDATE internal_mail_recipients SET read_at = NOW() WHERE id = ?", [(int)$row['recipient_row_id']]);
             $row['read_at'] = date('Y-m-d H:i:s');
         }
+        $row['attachments'] = MailService::attachments((int)$row['id']);
+        Response::json(['ok' => true, 'data' => $row]);
+    }
+
+    /** تفاصيل رسالة مُرسلة مع حالة القراءة عند كل مستلم (موبايل) */
+    public function mailShowSent(string $id): void
+    {
+        $uid = ApiAuth::id();
+        $row = Database::query(
+            "SELECT * FROM internal_mails WHERE id = ? AND sender_id = ? AND deleted_by_sender = 0",
+            [(int)$id, $uid]
+        )->fetch();
+        if (!$row) {
+            Response::json(['ok' => false, 'error' => 'الرسالة غير موجودة'], 404);
+            return;
+        }
+        $row['recipients'] = Database::query(
+            "SELECT u.id, u.full_name, r.read_at
+             FROM internal_mail_recipients r JOIN users u ON u.id = r.recipient_id
+             WHERE r.mail_id = ? ORDER BY u.full_name",
+            [(int)$id]
+        )->fetchAll();
+        $row['attachments'] = MailService::attachments((int)$id);
+        $row['targets'] = MailService::targets((int)$id);
         Response::json(['ok' => true, 'data' => $row]);
     }
 

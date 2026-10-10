@@ -8,7 +8,33 @@
   <div style="color:#6b7280;font-size:13px;margin-bottom:12px;border-bottom:1px solid #e5e7eb;padding-bottom:10px">
     <?= $row['created_at'] ?>
   </div>
+
+  <?php if (!empty($targets)): ?>
+  <div style="margin-bottom:14px">
+    <?php foreach ($targets as $t): ?>
+    <span class="badge badge-light" style="margin-left:6px">
+      <i class="fa-solid <?= $t['target_type'] === 'department' ? 'fa-building' : 'fa-users-rectangle' ?>"></i>
+      <?= $t['target_type'] === 'department' ? 'قسم' : 'مجموعة' ?>: <?= Helpers::e($t['target_label']) ?>
+    </span>
+    <?php endforeach; ?>
+  </div>
+  <?php endif; ?>
+
   <div style="white-space:pre-wrap;font-size:15px;line-height:1.8;margin-bottom:20px"><?= Helpers::e($row['body']) ?></div>
+
+  <?php if (!empty($row['attachments'])): ?>
+  <div style="margin-bottom:20px">
+    <h4 style="margin-bottom:8px"><i class="fa-solid fa-paperclip"></i> المرفقات (<?= count($row['attachments']) ?>)</h4>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <?php foreach ($row['attachments'] as $a): ?>
+      <a href="<?= Helpers::e($a['file_path']) ?>" target="_blank" class="btn btn-sm btn-secondary" style="justify-content:flex-start;width:fit-content">
+        <i class="fa-solid fa-paperclip"></i> <?= Helpers::e($a['original_name'] ?: 'ملف') ?>
+        <?php if ($a['file_size']): ?><span style="color:#6b7280"> (<?= number_format((int)$a['file_size'] / 1024, 1) ?> KB)</span><?php endif; ?>
+      </a>
+      <?php endforeach; ?>
+    </div>
+  </div>
+  <?php endif; ?>
 
   <h4 style="margin-bottom:8px">المستلمون وحالة القراءة</h4>
   <table class="table">

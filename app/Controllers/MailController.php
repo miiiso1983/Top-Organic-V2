@@ -1,7 +1,7 @@
 <?php
 namespace App\Controllers;
 
-use App\Core\{Controller, Database, Response, Auth};
+use App\Core\{Controller, Database, Response, Auth, MailService};
 
 /**
  * البريد الداخلي — مراسلات حقيقية بين مستخدمي النظام (إرسال/استقبال/رد)،
@@ -14,7 +14,8 @@ class MailController extends Controller
     {
         $uid = (int)Auth::id();
         $rows = Database::query(
-            "SELECT m.id, m.subject, m.body, m.created_at, u.full_name AS sender_name, r.read_at
+            "SELECT m.id, m.subject, m.body, m.created_at, u.full_name AS sender_name, r.read_at,
+                    (SELECT COUNT(*) FROM internal_mail_attachments WHERE mail_id = m.id) AS attachments_count
              FROM internal_mail_recipients r
              JOIN internal_mails m ON m.id = r.mail_id
              JOIN users u ON u.id = m.sender_id
@@ -36,6 +37,7 @@ class MailController extends Controller
         $rows = Database::query(
             "SELECT m.id, m.subject, m.body, m.created_at,
                     (SELECT COUNT(*) FROM internal_mail_recipients WHERE mail_id = m.id) AS recipients_count,
+                    (SELECT COUNT(*) FROM internal_mail_attachments WHERE mail_id = m.id) AS attachments_count,
                     (SELECT GROUP_CONCAT(u2.full_name SEPARATOR '، ')
                        FROM internal_mail_recipients r2 JOIN users u2 ON u2.id = r2.recipient_id
                       WHERE r2.mail_id = m.id) AS recipients_names
@@ -55,9 +57,18 @@ class MailController extends Controller
             "SELECT id, full_name FROM users WHERE id != ? AND is_active = 1 ORDER BY full_name",
             [$uid]
         )->fetchAll();
+        $departments = Database::query(
+            "SELECT id, name FROM departments WHERE is_active = 1 ORDER BY name"
+        )->fetchAll();
+        $groups = Database::query(
+            "SELECT g.id, g.name, (SELECT COUNT(*) FROM mail_group_members WHERE group_id = g.id) AS members_count
+             FROM mail_groups g WHERE g.is_active = 1 ORDER BY g.name"
+        )->fetchAll();
         $this->view('mail/compose', [
             'title' => 'رسالة جديدة',
             'users' => $users,
+            'departments' => $departments,
+            'groups' => $groups,
             'prefillTo' => (int)$this->input('to', 0),
             'prefillSubject' => (string)$this->input('subject', ''),
         ]);
@@ -66,12 +77,17 @@ class MailController extends Controller
     public function store(): void
     {
         $uid = (int)Auth::id();
-        $recipients = array_values(array_unique(array_filter(array_map('intval', (array)($_POST['recipients'] ?? [])))));
         $subject = trim((string)($_POST['subject'] ?? ''));
         $body = trim((string)($_POST['body'] ?? ''));
+        $resolved = MailService::resolveRecipients(
+            (array)($_POST['recipients'] ?? []),
+            (array)($_POST['department_ids'] ?? []),
+            (array)($_POST['group_ids'] ?? []),
+            $uid
+        );
 
-        if (!$recipients) {
-            $this->flash('error', 'يجب اختيار مستلم واحد على الأقل');
+        if (!$resolved['recipients']) {
+            $this->flash('error', 'يجب اختيار مستلم واحد أو قسم أو مجموعة على الأقل');
             Response::redirect('/mail/compose');
             return;
         }
@@ -81,11 +97,18 @@ class MailController extends Controller
             return;
         }
 
-        Database::query("INSERT INTO internal_mails (sender_id, subject, body) VALUES (?,?,?)", [$uid, $subject, $body]);
-        $mailId = (int)Database::lastInsertId();
-        foreach ($recipients as $rid) {
-            if ($rid === $uid) continue;
-            Database::query("INSERT INTO internal_mail_recipients (mail_id, recipient_id) VALUES (?,?)", [$mailId, $rid]);
+        // معاملة واحدة لضمان عدم إرسال الرسالة فعلياً للمستلمين إذا فشل
+        // رفع أحد المرفقات (مثلاً نوع ملف غير مدعوم)
+        Database::beginTransaction();
+        try {
+            $mailId = MailService::createMail($uid, $subject, $body, $resolved['recipients'], $resolved['targets']);
+            MailService::saveAttachmentsFromRequest($mailId);
+            Database::commit();
+        } catch (\Throwable $e) {
+            Database::rollBack();
+            $this->flash('error', 'تعذر إرسال الرسالة: ' . $e->getMessage());
+            Response::redirect('/mail/compose');
+            return;
         }
         $this->flash('success', 'تم إرسال الرسالة بنجاح');
         Response::redirect('/mail/sent');
@@ -109,6 +132,7 @@ class MailController extends Controller
             Database::query("UPDATE internal_mail_recipients SET read_at = NOW() WHERE id = ?", [(int)$row['recipient_row_id']]);
             $row['read_at'] = date('Y-m-d H:i:s');
         }
+        $row['attachments'] = MailService::attachments((int)$row['id']);
         $this->view('mail/show', ['title' => 'رسالة', 'row' => $row]);
     }
 
@@ -127,7 +151,9 @@ class MailController extends Controller
              WHERE r.mail_id = ? ORDER BY u.full_name",
             [(int)$id]
         )->fetchAll();
-        $this->view('mail/sent_show', ['title' => 'رسالة مُرسلة', 'row' => $row, 'recipients' => $recipients]);
+        $row['attachments'] = MailService::attachments((int)$row['id']);
+        $targets = MailService::targets((int)$row['id']);
+        $this->view('mail/sent_show', ['title' => 'رسالة مُرسلة', 'row' => $row, 'recipients' => $recipients, 'targets' => $targets]);
     }
 
     public function delete(string $id): void

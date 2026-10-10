@@ -8,7 +8,7 @@ use App\Controllers\{AuthController, DashboardController, PosController, OrderCo
     PreparationKitchenController, RecipeController, ProductionController, InventoryController, WarehouseController, CustodyController,
     PurchasingController, SupplierController, FinanceController, HrController,
     OrgChartController, ApprovalController, ReportController, AdminController, ApiController,
-    AccountingController, FixedAssetController, ARAPController, BankController, CostCenterController, FinancialReportController, WorkflowController, WorkflowDesignerController, ItemCardController, ItemCostSheetController, PreparedItemsController, ItemPriceController, PlateCostImportController, MaterialRequestController, MobileController, ModulesController, PttController, NotificationsController, ShiftController, MaintenanceController, HousingController, MailController};
+    AccountingController, FixedAssetController, ARAPController, BankController, CostCenterController, FinancialReportController, WorkflowController, WorkflowDesignerController, ItemCardController, ItemCostSheetController, PreparedItemsController, ItemPriceController, PlateCostImportController, MaterialRequestController, MobileController, ModulesController, PttController, NotificationsController, ShiftController, MaintenanceController, HousingController, MailController, MailGroupController};
 
 $router = new Router();
 
@@ -682,6 +682,12 @@ $router->get('/mail/sent', [MailController::class, 'sent'], ['auth']);
 $router->get('/mail/compose', [MailController::class, 'composeForm'], ['auth']);
 $router->post('/mail/compose', [MailController::class, 'store'], ['auth']);
 $router->get('/mail/count', [MailController::class, 'countJson'], ['auth']);
+$router->get('/mail/groups', [MailGroupController::class, 'index'], ['auth']);
+$router->get('/mail/groups/create', [MailGroupController::class, 'createForm'], ['auth']);
+$router->post('/mail/groups', [MailGroupController::class, 'store'], ['auth']);
+$router->get('/mail/groups/{id}/edit', [MailGroupController::class, 'editForm'], ['auth']);
+$router->post('/mail/groups/{id}', [MailGroupController::class, 'update'], ['auth']);
+$router->post('/mail/groups/{id}/delete', [MailGroupController::class, 'delete'], ['auth']);
 $router->get('/mail/sent/{id}', [MailController::class, 'showSent'], ['auth']);
 $router->post('/mail/sent/{id}/delete', [MailController::class, 'deleteSent'], ['auth']);
 $router->get('/mail/{id}', [MailController::class, 'show'], ['auth']);
@@ -806,8 +812,15 @@ $router->post('/api/notifications/read-all', [ApiController::class, 'notificatio
 $router->get('/api/mail', [ApiController::class, 'mailInbox'], ['api']);
 $router->get('/api/mail/sent', [ApiController::class, 'mailSent'], ['api']);
 $router->get('/api/mail/users', [ApiController::class, 'mailUsers'], ['api']);
+$router->get('/api/mail/departments', [ApiController::class, 'mailDepartments'], ['api']);
+$router->get('/api/mail/groups', [ApiController::class, 'mailGroups'], ['api']);
+$router->post('/api/mail/groups', [ApiController::class, 'mailGroupStore'], ['api']);
+$router->get('/api/mail/groups/{id}', [ApiController::class, 'mailGroupShow'], ['api']);
+$router->post('/api/mail/groups/{id}', [ApiController::class, 'mailGroupUpdate'], ['api']);
+$router->post('/api/mail/groups/{id}/delete', [ApiController::class, 'mailGroupDelete'], ['api']);
 $router->post('/api/mail/compose', [ApiController::class, 'mailCompose'], ['api']);
 $router->post('/api/mail/read-all', [ApiController::class, 'mailReadAll'], ['api']);
+$router->get('/api/mail/sent/{id}', [ApiController::class, 'mailShowSent'], ['api']);
 $router->get('/api/mail/{id}', [ApiController::class, 'mailShow'], ['api']);
 $router->post('/api/mail/{id}/read', [ApiController::class, 'mailRead'], ['api']);
 $router->post('/api/mail/{id}/delete', [ApiController::class, 'mailDelete'], ['api']);

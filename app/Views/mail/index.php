@@ -27,7 +27,7 @@
   <div class="mb-item <?= $read ? 'read' : 'unread' ?>">
     <div class="dot"></div>
     <div style="flex:1;cursor:pointer" onclick="location.href='/mail/<?= (int)$m['id'] ?>'">
-      <div class="ttl"><?= Helpers::e($m['subject']) ?></div>
+      <div class="ttl"><?= Helpers::e($m['subject']) ?> <?php if (!empty($m['attachments_count'])): ?><i class="fa-solid fa-paperclip" style="font-size:11px;color:#6b7280" title="<?= (int)$m['attachments_count'] ?> مرفق"></i><?php endif; ?></div>
       <div class="frm">من: <?= Helpers::e($m['sender_name']) ?></div>
       <div class="bdy"><?= Helpers::e(mb_substr($m['body'], 0, 120)) ?><?= mb_strlen($m['body']) > 120 ? '…' : '' ?></div>
     </div>

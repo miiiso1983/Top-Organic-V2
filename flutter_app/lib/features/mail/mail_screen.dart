@@ -5,7 +5,9 @@ import '../../core/network/api_client.dart';
 import '../../core/locale/locale_provider.dart';
 import '../../core/locale/app_strings.dart';
 import '../../shared/widgets/offline_banner.dart';
+import '../webview/webview_screen.dart';
 import 'compose_mail_screen.dart';
+import 'mail_groups_screen.dart';
 
 /// البريد الداخلي: رسائل حقيقية بين مستخدمي النظام (إرسال/استقبال/رد)،
 /// متاح لكل مستخدمي التطبيق في جميع الأقسام بلا أي شرط صلاحية.
@@ -92,11 +94,77 @@ class _MailScreenState extends State<MailScreen>
     }
   }
 
-  Future<void> _markRead(int id) async {
+  /// يجلب التفاصيل الكاملة لرسالة واردة (مع المرفقات)؛ يُعلّمها كمقروءة تلقائياً على الخادم
+  Future<Map<String, dynamic>?> _fetchInboxDetail(int id) async {
     final api = context.read<ApiClient>();
     try {
-      await api.post('/mail/$id/read');
-    } catch (_) {}
+      final res = await api.get('/mail/$id');
+      final body = res.data as Map<String, dynamic>;
+      return (body['data'] as Map?)?.cast<String, dynamic>();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// يجلب التفاصيل الكاملة لرسالة مُرسلة (مع المرفقات والأهداف)
+  Future<Map<String, dynamic>?> _fetchSentDetail(int id) async {
+    final api = context.read<ApiClient>();
+    try {
+      final res = await api.get('/mail/sent/$id');
+      final body = res.data as Map<String, dynamic>;
+      return (body['data'] as Map?)?.cast<String, dynamic>();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _openAttachment(Map a) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => WebViewScreen(
+          path: a['file_path']?.toString() ?? '',
+          title: a['original_name']?.toString() ?? '',
+        ),
+      ),
+    );
+  }
+
+  Widget _attachmentsList(List attachments, String Function(String) t) {
+    if (attachments.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${t('mail_attachments_label')} (${attachments.length})',
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 6),
+          ...attachments.cast<Map>().map(
+            (a) => InkWell(
+              onTap: () => _openAttachment(a),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    const Icon(Icons.attach_file, size: 16),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        a['original_name']?.toString() ?? '',
+                        style: const TextStyle(decoration: TextDecoration.underline),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _deleteInbox(int id) async {
@@ -157,11 +225,14 @@ class _MailScreenState extends State<MailScreen>
 
   void _showInboxDetail(Map<String, dynamic> m, String Function(String) t) async {
     final id = m['id'] as int?;
-    if (id != null && m['read_at'] == null) {
-      await _markRead(id);
-      setState(() => m['read_at'] = DateTime.now().toIso8601String());
+    final wasUnread = m['read_at'] == null;
+    final detail = id != null ? await _fetchInboxDetail(id) : null;
+    final data = detail ?? m;
+    if (wasUnread && id != null) {
+      setState(() => m['read_at'] = data['read_at'] ?? DateTime.now().toIso8601String());
     }
     if (!mounted) return;
+    final attachments = (data['attachments'] as List?) ?? [];
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -169,7 +240,7 @@ class _MailScreenState extends State<MailScreen>
           children: [
             const Icon(Icons.mail_outline),
             const SizedBox(width: 8),
-            Expanded(child: Text(m['subject']?.toString() ?? '')),
+            Expanded(child: Text(data['subject']?.toString() ?? '')),
           ],
         ),
         content: SingleChildScrollView(
@@ -177,10 +248,11 @@ class _MailScreenState extends State<MailScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              _detailRow(t('mail_from_label'), m['sender_name']?.toString() ?? ''),
-              _detailRow(t('mail_date_label'), m['created_at']?.toString() ?? ''),
+              _detailRow(t('mail_from_label'), data['sender_name']?.toString() ?? ''),
+              _detailRow(t('mail_date_label'), data['created_at']?.toString() ?? ''),
               const Divider(height: 24),
-              Text(m['body']?.toString() ?? '', style: const TextStyle(fontSize: 15)),
+              Text(data['body']?.toString() ?? '', style: const TextStyle(fontSize: 15)),
+              _attachmentsList(attachments, t),
             ],
           ),
         ),
@@ -201,9 +273,9 @@ class _MailScreenState extends State<MailScreen>
             onPressed: () {
               Navigator.of(context).pop();
               _openCompose(
-                replyToId: m['sender_id'] as int?,
-                replyToName: m['sender_name']?.toString(),
-                subject: 'Re: ${m['subject'] ?? ''}',
+                replyToId: data['sender_id'] as int?,
+                replyToName: data['sender_name']?.toString(),
+                subject: 'Re: ${data['subject'] ?? ''}',
               );
             },
             icon: const Icon(Icons.reply, size: 18),
@@ -214,8 +286,13 @@ class _MailScreenState extends State<MailScreen>
     );
   }
 
-  void _showSentDetail(Map<String, dynamic> m, String Function(String) t) {
+  void _showSentDetail(Map<String, dynamic> m, String Function(String) t) async {
     final id = m['id'] as int?;
+    final detail = id != null ? await _fetchSentDetail(id) : null;
+    final data = detail ?? m;
+    if (!mounted) return;
+    final attachments = (data['attachments'] as List?) ?? [];
+    final targets = (data['targets'] as List?) ?? [];
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -223,7 +300,7 @@ class _MailScreenState extends State<MailScreen>
           children: [
             const Icon(Icons.send_outlined),
             const SizedBox(width: 8),
-            Expanded(child: Text(m['subject']?.toString() ?? '')),
+            Expanded(child: Text(data['subject']?.toString() ?? '')),
           ],
         ),
         content: SingleChildScrollView(
@@ -232,9 +309,26 @@ class _MailScreenState extends State<MailScreen>
             mainAxisSize: MainAxisSize.min,
             children: [
               _detailRow(t('mail_to_label'), m['recipients_names']?.toString() ?? ''),
-              _detailRow(t('mail_date_label'), m['created_at']?.toString() ?? ''),
+              _detailRow(t('mail_date_label'), data['created_at']?.toString() ?? ''),
+              if (targets.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: targets.cast<Map>().map((tg) {
+                    final isDept = tg['target_type'] == 'department';
+                    return Chip(
+                      avatar: Icon(isDept ? Icons.apartment : Icons.group, size: 16),
+                      label: Text(
+                        '${isDept ? t('mail_target_department') : t('mail_target_group')}: ${tg['target_label'] ?? ''}',
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
               const Divider(height: 24),
-              Text(m['body']?.toString() ?? '', style: const TextStyle(fontSize: 15)),
+              Text(data['body']?.toString() ?? '', style: const TextStyle(fontSize: 15)),
+              _attachmentsList(attachments, t),
             ],
           ),
         ),
@@ -278,6 +372,15 @@ class _MailScreenState extends State<MailScreen>
     return Scaffold(
       appBar: AppBar(
         title: Text(t('mail_title')),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.group_outlined),
+            tooltip: t('mail_groups_screen_title'),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const MailGroupsScreen()),
+            ),
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           tabs: [
@@ -326,11 +429,23 @@ class _MailScreenState extends State<MailScreen>
                                       ? Colors.grey
                                       : Theme.of(context).colorScheme.primary,
                                 ),
-                                title: Text(
-                                  m['subject']?.toString() ?? '',
-                                  style: TextStyle(
-                                    fontWeight: read ? FontWeight.normal : FontWeight.bold,
-                                  ),
+                                title: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        m['subject']?.toString() ?? '',
+                                        style: TextStyle(
+                                          fontWeight: read ? FontWeight.normal : FontWeight.bold,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    if ((m['attachments_count'] ?? 0) > 0)
+                                      const Padding(
+                                        padding: EdgeInsets.only(right: 4),
+                                        child: Icon(Icons.attach_file, size: 14, color: Colors.grey),
+                                      ),
+                                  ],
                                 ),
                                 subtitle: Text(
                                   '${m['sender_name'] ?? ''} — ${m['body'] ?? ''}',
@@ -369,7 +484,21 @@ class _MailScreenState extends State<MailScreen>
                               final m = _sent[i] as Map;
                               return ListTile(
                                 leading: const Icon(Icons.send_outlined, color: Colors.grey),
-                                title: Text(m['subject']?.toString() ?? ''),
+                                title: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        m['subject']?.toString() ?? '',
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    if ((m['attachments_count'] ?? 0) > 0)
+                                      const Padding(
+                                        padding: EdgeInsets.only(right: 4),
+                                        child: Icon(Icons.attach_file, size: 14, color: Colors.grey),
+                                      ),
+                                  ],
+                                ),
                                 subtitle: Text(
                                   '${t('mail_to_label')}: ${m['recipients_names'] ?? ''}',
                                   maxLines: 1,
