@@ -5,13 +5,20 @@
 #
 # الاستخدام:
 #   chmod +x flutter_app/run_android_build.sh
-#   ./flutter_app/run_android_build.sh            # يبني APK فقط
-#   ./flutter_app/run_android_build.sh install     # يبني ثم يثبّته مباشرة
-#                                                   # على جهاز/محاكي متصل
+#   ./flutter_app/run_android_build.sh              # يبني APK فقط
+#   ./flutter_app/run_android_build.sh install       # يبني ثم يثبّته مباشرة
+#                                                     # على جهاز/محاكي متصل
+#   ./flutter_app/run_android_build.sh install-only  # بدون إعادة بناء،
+#                                                     # يثبّت آخر APK مبني
+#                                                     # مسبقاً فقط
 #
 # ملاحظة: لمعظم الهواتف الحديثة استخدم app-arm64-v8a-release.apk،
 # ولمحاكي أندرويد (الذي يعمل عادة بمعالج x86_64) استخدم
 # app-x86_64-release.apk.
+#
+# التثبيت التلقائي (install / install-only) يستخدم adb مباشرة بدل
+# "flutter install" لأن الأخير يتوقع ملف app-release.apk واحداً فقط،
+# وهو غير موجود عند البناء بخيار --split-per-abi (ملف منفصل لكل معالج).
 
 set -e
 
@@ -24,6 +31,38 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+OUT_DIR="$SCRIPT_DIR/build/app/outputs/flutter-apk"
+
+# تثبيت أنسب split-per-abi المطابق لمعمارية الجهاز/المحاكي المتصل عبر adb
+install_matching_apk() {
+    if ! command -v adb >/dev/null 2>&1; then
+        echo "تحذير: أمر adb غير موجود، لا يمكن التثبيت التلقائي. ثبّت أحد الملفات التالية يدوياً:"
+        ls "$OUT_DIR"/app-*-release.apk 2>/dev/null
+        return
+    fi
+    local DEVICE_ABI
+    DEVICE_ABI="$(adb shell getprop ro.product.cpu.abi 2>/dev/null | tr -d '\r\n')"
+    local APK
+    case "$DEVICE_ABI" in
+        arm64-v8a) APK="$OUT_DIR/app-arm64-v8a-release.apk" ;;
+        armeabi-v7a|armeabi) APK="$OUT_DIR/app-armeabi-v7a-release.apk" ;;
+        x86_64) APK="$OUT_DIR/app-x86_64-release.apk" ;;
+        *) APK="$OUT_DIR/app-arm64-v8a-release.apk" ;; # افتراضي لمعظم الأجهزة الحقيقية
+    esac
+    if [[ ! -f "$APK" ]]; then
+        echo "خطأ: الملف المطابق ($APK) غير موجود. ابنِ المشروع أولاً بدون install-only." >&2
+        exit 1
+    fi
+    echo "    الجهاز المتصل (abi=$DEVICE_ABI) → تثبيت: $(basename "$APK")"
+    adb install -r "$APK"
+}
+
+if [[ "$ACTION" == "install-only" ]]; then
+    echo "==> تثبيت آخر APK مبني مسبقاً مباشرة (بدون إعادة بناء)..."
+    install_matching_apk
+    exit 0
+fi
 
 echo "==> (1/4) سحب آخر تحديثات الكود..."
 cd "$REPO_ROOT"
@@ -57,15 +96,14 @@ fi
 echo "==> (3/4) بناء APK (نسخة لكل معالج لتصغير الحجم)..."
 flutter build apk --release --split-per-abi
 
-OUT_DIR="$SCRIPT_DIR/build/app/outputs/flutter-apk"
 echo "==> (4/4) تم البناء بنجاح:"
 ls -lh "$OUT_DIR"/app-*-release.apk
 
 if [[ "$ACTION" == "install" ]]; then
     echo "==> تثبيت على الجهاز/المحاكي المتصل..."
-    flutter install
+    install_matching_apk
+else
+    echo ""
+    echo "لتثبيت الملف يدوياً على هاتف حقيقي: انقل app-arm64-v8a-release.apk للهاتف وافتحه."
+    echo "لتثبيته على محاكي أندرويد (x86_64): استخدم app-x86_64-release.apk."
 fi
-
-echo ""
-echo "لتثبيت الملف يدوياً على هاتف حقيقي: انقل app-arm64-v8a-release.apk للهاتف وافتحه."
-echo "لتثبيته على محاكي أندرويد (x86_64): استخدم app-x86_64-release.apk."
