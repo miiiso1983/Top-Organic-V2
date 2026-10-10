@@ -160,9 +160,16 @@ class MailController extends Controller
 
     public static function unreadCount(int $userId): int
     {
-        return (int)Database::query(
-            "SELECT COUNT(*) FROM internal_mail_recipients WHERE recipient_id = ? AND deleted_by_recipient = 0 AND read_at IS NULL",
-            [$userId]
-        )->fetchColumn();
+        // محمي بـ try/catch لأن جداول البريد الداخلي قد تكون غير موجودة بعد
+        // (قبل تشغيل migration 171) على بيئات لم تُحدَّث بعد؛ يجب ألا يؤدي
+        // ذلك لكسر الصفحة بالكامل عبر layout الرئيسي الذي يستدعي هذه الدالة.
+        try {
+            return (int)Database::query(
+                "SELECT COUNT(*) FROM internal_mail_recipients WHERE recipient_id = ? AND deleted_by_recipient = 0 AND read_at IS NULL",
+                [$userId]
+            )->fetchColumn();
+        } catch (\Throwable $e) {
+            return 0;
+        }
     }
 }
