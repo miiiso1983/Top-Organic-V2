@@ -83,7 +83,12 @@ final class MigrationRunner
                     $ok++;
                 } catch (\PDOException $e) {
                     $code = (int)($e->errorInfo[1] ?? 0);
-                    if (in_array($code, self::TOLERATED, true)) {
+                    // MariaDB (خلافاً لـ MySQL 8 الذي يُرجع 1826 المُتسامح معه أصلاً) يُغلِّف
+                    // خطأ «اسم مفتاح أجنبي مكرر» (Duplicate foreign key constraint name)
+                    // برمز عام 1005 يحوي "errno: 121" ضمن نص الرسالة — نعامله كتحذير أيضاً
+                    // بدل فشل كامل الملف، لأن القيد موجود أصلاً بنفس الاسم على الجدول.
+                    $isDupFkName = $code === 1005 && str_contains($e->getMessage(), 'errno: 121');
+                    if (in_array($code, self::TOLERATED, true) || $isDupFkName) {
                         $warned++;
                         continue;
                     }
