@@ -782,11 +782,7 @@ class ApiController extends Controller
             Response::json(['ok' => false, 'error' => 'تاريخ العمل الإضافي غير صالح'], 422);
             return;
         }
-        $yesterday = date('Y-m-d', strtotime('-1 day'));
-        if ($date < $yesterday) {
-            Response::json(['ok' => false, 'error' => 'لا يمكن تقديم طلب عمل إضافي لتاريخ يسبق يوم الأمس'], 422);
-            return;
-        }
+        // لا قيد على تاريخ طلب العمل الإضافي: يُسمح بتقديم الطلب لأي تاريخ (ماضٍ أو حاضر أو مستقبل) بحرية.
         if ($hours <= 0) {
             Response::json(['ok' => false, 'error' => 'عدد الساعات يجب أن يكون أكبر من صفر'], 422);
             return;
@@ -992,13 +988,28 @@ class ApiController extends Controller
             Response::json(['ok' => false, 'error' => 'ليس لديك صلاحية'], 403);
             return;
         }
+        // تُقيّد رؤية طلبات نسيان البصمة حصراً على المدراء الذين لديهم فريق (مرؤوسون فعليون)،
+        // وتُعرض لهم فقط طلبات أفراد فريقهم أو طلباتهم الخاصة؛ من لا يملك فريقاً لا يرى أي طلب حتى لو كانت لديه صلاحية الموافقة العامة.
+        $subordinateIds = array_column(WorkflowEngine::subordinateEmployees((int)$user['id']), 'id');
+        if (empty($subordinateIds)) {
+            Response::json(['ok' => true, 'data' => []]);
+            return;
+        }
+        $visibleIds = $subordinateIds;
+        $ownEmp = Database::query("SELECT id FROM employees WHERE user_id = ?", [(int)$user['id']])->fetch();
+        if ($ownEmp) {
+            $visibleIds[] = (int)$ownEmp['id'];
+        }
+        $visibleIds = array_values(array_unique(array_map('intval', $visibleIds)));
+        $placeholders = implode(',', array_fill(0, count($visibleIds), '?'));
         $rows = Database::query(
             "SELECT m.*, e.full_name, e.emp_code, r.id AS workflow_request_id, r.template_id, r.current_step
              FROM missing_attendance_requests m
              JOIN employees e ON e.id = m.employee_id
              LEFT JOIN requests r ON r.id = m.workflow_request_id
-             WHERE m.status IN ('pending','manager_approved')
-             ORDER BY m.created_at DESC"
+             WHERE m.status IN ('pending','manager_approved') AND m.employee_id IN ($placeholders)
+             ORDER BY m.created_at DESC",
+            $visibleIds
         )->fetchAll();
         foreach ($rows as &$row) {
             $row['can_decide'] = false;
@@ -1071,7 +1082,8 @@ class ApiController extends Controller
 
     /** ========== كشف الراتب: الشهر الحالي والسجل التاريخي (بعد الاعتماد فقط) ========== */
 
-    /** قائمة الرواتب المعتمدة/المصروفة للموظف الحالي (الشهر الحالي + السجل التاريخي) */
+    /** قائمة الرواتب للموظف الحالي (الشهر الحالي + السجل التاريخي)؛ تظهر فور توليدها بغض النظر
+     * عن حالة اعتمادها ('draft'/'approved'/'paid') ليرى الموظف كشف راتبه فور توليده من قبل الموارد البشرية */
     public function myPayrollHistory(): void
     {
         $emp = Database::query("SELECT id FROM employees WHERE user_id = ?", [ApiAuth::id()])->fetch();
@@ -1079,21 +1091,21 @@ class ApiController extends Controller
         $rows = Database::query(
             "SELECT id, period, base_salary, total_earnings, total_deductions, net_salary, status, approved_at, paid_at
              FROM payrolls
-             WHERE employee_id = ? AND status IN ('approved','paid')
+             WHERE employee_id = ?
              ORDER BY period DESC, id DESC LIMIT 36",
             [(int)$emp['id']]
         )->fetchAll();
         Response::json(['ok' => true, 'data' => $rows]);
     }
 
-    /** تفاصيل كشف راتب واحد (كل بنود الاستحقاقات والاستقطاعات) للموظف صاحب الراتب فقط */
+    /** تفاصيل كشف راتب واحد (كل بنود الاستحقاقات والاستقطاعات) للموظف صاحب الراتب فقط (أي حالة، بما في ذلك المسودة) */
     public function myPayrollDetail(string $id): void
     {
         $emp = Database::query("SELECT id FROM employees WHERE user_id = ?", [ApiAuth::id()])->fetch();
         if (!$emp) { Response::json(['ok' => false, 'error' => 'لا يوجد ملف موظف'], 404); return; }
         $payrollId = (int)$id;
         $p = Database::query(
-            "SELECT p.* FROM payrolls p WHERE p.id = ? AND p.employee_id = ? AND p.status IN ('approved','paid')",
+            "SELECT p.* FROM payrolls p WHERE p.id = ? AND p.employee_id = ?",
             [$payrollId, (int)$emp['id']]
         )->fetch();
         if (!$p) { Response::json(['ok' => false, 'error' => 'كشف الراتب غير موجود'], 404); return; }

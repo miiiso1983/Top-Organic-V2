@@ -57,7 +57,7 @@ VALUES ('hr_missing_attendance', 'طلب نسيان بصمة', 'طلب تسجي�
 {"name":"request_type","type":"select","label":"نسيان","required":true,"options":[{"value":"in","label":"بصمة دخول"},{"value":"out","label":"بصمة خروج"}]},
 {"name":"clock_in_at","type":"datetime","label":"تاريخ ووقت بصمة الدخول","required":false},
 {"name":"clock_out_at","type":"datetime","label":"تاريخ ووقت بصمة الخروج","required":false},
-{"name":"reason","type":"textarea","label":"السبب / الملاحظات","required":false}]',
+{"name":"reason","type":"textarea","label":"السبب / الملاحظات","required":true}]',
 NULL, 1, NULL)
 ON DUPLICATE KEY UPDATE name=VALUES(name), description=VALUES(description), icon=VALUES(icon),
 fields_json=VALUES(fields_json), amount_field=VALUES(amount_field);

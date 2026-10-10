@@ -3384,6 +3384,10 @@ class HrService
         if ($clockInAt && $clockOutAt && $clockOutAt <= $clockInAt) {
             throw new \RuntimeException('وقت الخروج يجب أن يكون بعد وقت الدخول');
         }
+        $reason = trim((string)($payload['reason'] ?? ''));
+        if ($reason === '') {
+            throw new \RuntimeException('سبب/توضيح طلب نسيان البصمة مطلوب');
+        }
 
         Database::query(
             "INSERT INTO missing_attendance_requests
@@ -3392,7 +3396,7 @@ class HrService
             [
                 $employeeId, $requestType,
                 $clockInAt, $clockOutAt,
-                (string)($payload['reason'] ?? ''),
+                $reason,
                 'pending',
             ]
         );

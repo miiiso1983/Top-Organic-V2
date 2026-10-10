@@ -93,9 +93,9 @@ const I18N = {
     item_label: 'المادة', qty_label: 'الكمية', reason_label: 'السبب', notes_label: 'ملاحظات',
     btn_send_material_request: 'إرسال طلب مواد', btn_send_purchase_request: 'إرسال طلب شراء',
     forget_type_label: 'نسيان', opt_clock_in: 'بصمة دخول', opt_clock_out: 'بصمة خروج', datetime_label: 'التاريخ والوقت',
-    reason_notes_label: 'السبب / الملاحظات', btn_send_missing_att: 'إرسال طلب نسيان بصمة', my_requests_title: 'طلباتي',
+    reason_notes_label: 'السبب / الملاحظات *', btn_send_missing_att: 'إرسال طلب نسيان بصمة', my_requests_title: 'طلباتي',
     sent_material_ok: 'تم إرسال طلب المواد للموافقة', sent_purchase_ok: 'تم إرسال طلب الشراء للموافقة',
-    sent_missing_att_ok: 'تم إرسال طلب نسيان البصمة', no_requests: 'لا توجد طلبات',
+    sent_missing_att_ok: 'تم إرسال طلب نسيان البصمة', no_requests: 'لا توجد طلبات', reason_required_msg: 'السبب / الملاحظات حقل مطلوب',
     opt_in_label: 'دخول', opt_out_label: 'خروج',
     team_title: 'فريقي', team_no_subordinates: 'لا يوجد لديك مرؤوسون حالياً', period_label: 'الفترة',
     evaluated: 'مُقيَّم', not_evaluated: 'غير مُقيَّم', btn_evaluate: 'تقييم', btn_view: 'عرض', btn_request_on_behalf: 'تقديم طلب نيابة',
@@ -131,9 +131,9 @@ const I18N = {
     item_label: 'Item', qty_label: 'Quantity', reason_label: 'Reason', notes_label: 'Notes',
     btn_send_material_request: 'Send Material Request', btn_send_purchase_request: 'Send Purchase Request',
     forget_type_label: 'Missing', opt_clock_in: 'Check-in', opt_clock_out: 'Check-out', datetime_label: 'Date & time',
-    reason_notes_label: 'Reason / notes', btn_send_missing_att: 'Send Missing Fingerprint Request', my_requests_title: 'My Requests',
+    reason_notes_label: 'Reason / notes *', btn_send_missing_att: 'Send Missing Fingerprint Request', my_requests_title: 'My Requests',
     sent_material_ok: 'Material request sent for approval', sent_purchase_ok: 'Purchase request sent for approval',
-    sent_missing_att_ok: 'Missing fingerprint request sent', no_requests: 'No requests',
+    sent_missing_att_ok: 'Missing fingerprint request sent', no_requests: 'No requests', reason_required_msg: 'Reason / notes is required',
     opt_in_label: 'In', opt_out_label: 'Out',
     team_title: 'My Team', team_no_subordinates: 'You have no direct reports currently', period_label: 'Period',
     evaluated: 'Evaluated', not_evaluated: 'Not evaluated', btn_evaluate: 'Evaluate', btn_view: 'View', btn_request_on_behalf: 'Submit Request On Behalf',
@@ -355,7 +355,7 @@ async function loadRequests() {
   html += '<div class="form-group"><label>' + t('forget_type_label') + '</label>';
   html += '<select id="ma-type"><option value="in">' + t('opt_clock_in') + '</option><option value="out">' + t('opt_clock_out') + '</option></select></div>';
   html += '<div class="form-group"><label>' + t('datetime_label') + '</label><input type="datetime-local" id="ma-datetime"></div>';
-  html += '<div class="form-group"><label>' + t('reason_notes_label') + '</label><textarea id="ma-reason"></textarea></div>';
+  html += '<div class="form-group"><label>' + t('reason_notes_label') + '</label><textarea id="ma-reason" required></textarea></div>';
   html += '<button class="btn" onclick="saveMissingAttendanceRequest()">' + t('btn_send_missing_att') + '</button>';
   html += '<div id="ma-msg"></div></div>';
 
@@ -413,7 +413,12 @@ function formatMissingAttDateTime(value) {
 }
 async function saveMissingAttendanceRequest() {
   const type = document.getElementById('ma-type').value;
-  const payload = { request_type: type, reason: document.getElementById('ma-reason').value };
+  const reasonValue = document.getElementById('ma-reason').value.trim();
+  if (!reasonValue) {
+    document.getElementById('ma-msg').innerHTML = '<div class="error">' + t('reason_required_msg') + '</div>';
+    return;
+  }
+  const payload = { request_type: type, reason: reasonValue };
   const dateTime = formatMissingAttDateTime(document.getElementById('ma-datetime').value);
   if (type === 'in') { payload.clock_in_at = dateTime; } else if (type === 'out') { payload.clock_out_at = dateTime; }
   const btn = event.target;
@@ -531,8 +536,12 @@ function toggleOnBehalfFields(employeeId) {
 }
 async function submitOnBehalf(employeeId) {
   const type = document.getElementById('ob-type-' + employeeId).value;
-  const reason = document.getElementById('ob-reason-' + employeeId).value;
+  const reason = document.getElementById('ob-reason-' + employeeId).value.trim();
   const msg = document.getElementById('ob-msg-' + employeeId);
+  if (type === 'missing_attendance' && !reason) {
+    msg.innerHTML = '<div class="error">' + t('reason_required_msg') + '</div>';
+    return;
+  }
   let res;
   if (type === 'missing_attendance') {
     const maType = document.getElementById('ob-ma-type-' + employeeId).value;

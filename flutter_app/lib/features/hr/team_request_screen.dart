@@ -109,6 +109,10 @@ class _TeamRequestScreenState extends State<TeamRequestScreen> {
       _showError(t('team_request_att_both_required'));
       return;
     }
+    if (_attReasonController.text.trim().isEmpty) {
+      _showError(t('team_request_att_reason_required'));
+      return;
+    }
     setState(() => _submitting = true);
     try {
       final api = context.read<ApiClient>();

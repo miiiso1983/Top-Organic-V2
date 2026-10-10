@@ -6,7 +6,7 @@ import '../../core/locale/app_strings.dart';
 import '../../shared/widgets/offline_banner.dart';
 import 'salary_detail_screen.dart';
 
-/// شاشة كشف الراتب: الشهر الحالي والسجل التاريخي (الرواتب المعتمدة/المصروفة فقط)
+/// شاشة كشف الراتب: الشهر الحالي والسجل التاريخي (تظهر فور التوليد بغض النظر عن حالة الاعتماد)
 class SalaryScreen extends StatefulWidget {
   const SalaryScreen({super.key});
 
@@ -53,6 +53,7 @@ class _SalaryScreenState extends State<SalaryScreen> {
     return {
           'approved': t('hr_salary_status_approved'),
           'paid': t('hr_salary_status_paid'),
+          'draft': t('hr_salary_status_draft'),
         }[status] ??
         status;
   }

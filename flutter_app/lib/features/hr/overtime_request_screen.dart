@@ -60,12 +60,11 @@ class _OvertimeRequestScreenState extends State<OvertimeRequestScreen> {
 
   Future<void> _pickDate() async {
     final now = DateTime.now();
-    final yesterday = now.subtract(const Duration(days: 1));
     final picked = await showDatePicker(
       context: context,
       initialDate: now,
-      // لا يُسمح بتاريخ يسبق يوم الأمس (سياسة العمل: أمس، اليوم، أو المستقبل فقط)
-      firstDate: DateTime(yesterday.year, yesterday.month, yesterday.day),
+      // لا قيد على التاريخ: يُسمح بطلب عمل إضافي لأي تاريخ (ماضٍ أو حاضر أو مستقبل) بحرية.
+      firstDate: DateTime(now.year - 2),
       lastDate: DateTime(now.year + 1),
     );
     if (picked != null) {

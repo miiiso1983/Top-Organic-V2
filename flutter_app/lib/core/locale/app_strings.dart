@@ -707,6 +707,7 @@ class AppStrings {
     },
     'hr_salary_status_approved': {'ar': 'معتمد', 'en': 'Approved'},
     'hr_salary_status_paid': {'ar': 'مصروف', 'en': 'Paid'},
+    'hr_salary_status_draft': {'ar': 'قيد الإعداد', 'en': 'Draft'},
     'hr_salary_title': {'ar': 'كشف الراتب', 'en': 'Salary Statement'},
     'hr_salary_empty': {
       'ar': 'لا توجد كشوف رواتب معتمدة بعد',
@@ -2290,6 +2291,10 @@ class AppStrings {
     'team_request_att_both_required': {
       'ar': 'يرجى تحديد وقتي الدخول والخروج معاً',
       'en': 'Please choose both clock-in and clock-out time',
+    },
+    'team_request_att_reason_required': {
+      'ar': 'السبب / الملاحظات حقل مطلوب',
+      'en': 'Reason / notes is required',
     },
     'team_request_att_submitted': {
       'ar': 'تم إرسال طلب نسيان البصمة بنجاح',

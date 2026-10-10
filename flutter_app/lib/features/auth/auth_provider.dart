@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../../core/network/api_client.dart';
 import '../../core/storage/auth_storage.dart';
@@ -11,6 +12,7 @@ class AuthProvider extends ChangeNotifier {
 
   final ApiClient _api;
   final AuthStorage _storage;
+  Timer? _permissionsTimer;
 
   AuthState state = AuthState.unknown;
   Map<String, dynamic>? user;
@@ -55,8 +57,23 @@ class AuthProvider extends ChangeNotifier {
       permissions = await _storage.getPermissions();
       state = AuthState.authenticated;
       _refreshPermissions();
+      _startPermissionsAutoRefresh();
     }
     notifyListeners();
+  }
+
+  /// يستدعي تحديث الصلاحيات فوراً من الخادم (يُستخدم عند استئناف التطبيق من الخلفية لضمان
+  /// ظهور/اختفاء عناصر القائمة والطلبات فوراً عند عودة المستخدم للتطبيق)
+  Future<void> refreshPermissions() => _refreshPermissions();
+
+  /// تشغيل مؤقت دوري (كل 30 ثانية) يجلب الصلاحيات الفعلية من الخادم طوال عمر الجلسة،
+  /// لينعكس أي منح/سحب صلاحية يجريه المدير على واجهة التطبيق فوراً دون حاجة لإعادة تسجيل الدخول.
+  void _startPermissionsAutoRefresh() {
+    _permissionsTimer?.cancel();
+    _permissionsTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _refreshPermissions(),
+    );
   }
 
   /// تحديث الصلاحيات من الخادم دون الحاجة لإعادة تسجيل الدخول (مثلاً بعد تعديل صلاحيات الدور)
@@ -98,6 +115,7 @@ class AuthProvider extends ChangeNotifier {
         user = data['user'] as Map<String, dynamic>;
         permissions = perms;
         state = AuthState.authenticated;
+        _startPermissionsAutoRefresh();
         PushNotificationService().sendCurrentToken();
         onLogin?.call();
         return true;
@@ -116,10 +134,17 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    _permissionsTimer?.cancel();
     await _storage.clear();
     user = null;
     permissions = [];
     state = AuthState.unauthenticated;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _permissionsTimer?.cancel();
+    super.dispose();
   }
 }
