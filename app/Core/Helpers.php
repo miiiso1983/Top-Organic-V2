@@ -26,7 +26,7 @@ class Helpers
         return number_format((float)$amount, 0) . ' ' . App::config('currency');
     }
 
-    public static function notify(int $userId, string $title, string $body = '', ?string $link = null, ?int $senderId = null, ?string $targetType = null, array $target = [], ?int $broadcastId = null, ?string $entityType = null, ?int $entityId = null, ?string $actionType = null, array $metadata = [], bool $pushToo = false): void
+    public static function notify(int $userId, string $title, string $body = '', ?string $link = null, ?int $senderId = null, ?string $targetType = null, array $target = [], ?int $broadcastId = null, ?string $entityType = null, ?int $entityId = null, ?string $actionType = null, array $metadata = [], bool $pushToo = false): int
     {
         Database::query(
             "INSERT INTO notifications (user_id, title, body, link, sender_id, is_announcement, target_type, target_level, target_role_id, target_branch_id, target_department_id, broadcast_id, entity_type, entity_id, action_type, metadata_json)
@@ -35,6 +35,9 @@ class Helpers
              $target['level'] ?? null, $target['role_id'] ?? null, $target['branch_id'] ?? null, $target['department_id'] ?? null, $broadcastId,
              $entityType, $entityId, $actionType, $metadata ? json_encode($metadata, JSON_UNESCAPED_UNICODE) : null]
         );
+        // يُلتقط lastInsertId() فور الإدراج مباشرة، قبل أي استعلام Push قد ينفذ استعلامات SELECT
+        // ويعيد ضبط القيمة إلى صفر على بعض محركات PDO — ما كان يكسر ربط `broadcast_id` الصحيح بالتعميم في sendBroadcast()
+        $newId = (int)Database::lastInsertId();
         // إشعار Push لتطبيق الموبايل/المتصفح (بالإضافة لإشعار الويب أعلاه) عند الطلب فقط
         if ($pushToo) {
             try {
@@ -43,6 +46,7 @@ class Helpers
                 error_log('Helpers::notify push queue failed: ' . $e->getMessage());
             }
         }
+        return $newId;
     }
 
     /** إنشاء تعميم لمجموعة من المستخدمين مع رابط `broadcast_id` مشترك */
@@ -53,8 +57,7 @@ class Helpers
         }
         // إنشاء صف قالب يحمل `broadcast_id` الخاص به
         $first = (int)$users[0]['id'];
-        self::notify($first, $title, $body, $link, $senderId, $targetType, $target, null, null, null, null, [], $pushToo);
-        $broadcastId = (int)Database::lastInsertId();
+        $broadcastId = self::notify($first, $title, $body, $link, $senderId, $targetType, $target, null, null, null, null, [], $pushToo);
         Database::query("UPDATE notifications SET broadcast_id = ? WHERE id = ?", [$broadcastId, $broadcastId]);
         // إرسال النسخ الباقية
         for ($i = 1; $i < count($users); $i++) {

@@ -42,8 +42,18 @@ $resendData = [
   </table>
 </div>
 
+<?php
+$totalRecipients = count($recipients);
+$viewedCount = 0;
+foreach ($recipients as $r) {
+    if (!empty($r['receipt_read_at'] ?? $r['read_at'])) { $viewedCount++; }
+}
+?>
 <div class="card">
   <h4>سجل الاستلام والقراءة</h4>
+  <div class="announcement-views-summary">
+    <span class="badge badge-info"><i class="fa-solid fa-eye"></i> عدد المشاهدات: <?= $viewedCount ?> من <?= $totalRecipients ?></span>
+  </div>
   <table>
     <tr><th>المستلم</th><th>اسم المستخدم</th><th>تاريخ القراءة</th><th>IP</th></tr>
     <?php foreach ($recipients as $r):
@@ -60,3 +70,8 @@ $resendData = [
     <?php if (!$recipients): ?><tr><td colspan="4">لا توجد بيانات استلام</td></tr><?php endif; ?>
   </table>
 </div>
+
+<style>
+.announcement-views-summary { margin-bottom: 10px; }
+.announcement-views-summary .badge { font-size: 13px; padding: 6px 10px; }
+</style>

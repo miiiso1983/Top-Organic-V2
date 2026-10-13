@@ -10,7 +10,7 @@
     <?php if ($q !== ''): ?><a href="/hr/notifications-history" class="btn btn-sm btn-light">إلغاء البحث</a><?php endif; ?>
   </form>
   <table>
-    <tr><th>العنوان</th><th>المستلمين</th><th>المرسل</th><th>التاريخ</th><th>المستلمين</th><th>المقروءة</th><th></th></tr>
+    <tr><th>العنوان</th><th>الفئة المستهدفة</th><th>المرسل</th><th>التاريخ</th><th>عدد المستلمين</th><th>عدد المشاهدات</th><th></th></tr>
     <?php foreach ($items as $n): ?>
     <tr id="row-<?= $n['id'] ?>">
       <td><?= Helpers::e($n['title']) ?></td>

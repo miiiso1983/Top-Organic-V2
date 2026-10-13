@@ -1361,10 +1361,12 @@ class HrController extends Controller
         $history = Database::query(
             "SELECT n.id, n.title, n.target_type, n.sender_id, n.created_at, n.broadcast_id,
                 s.full_name AS sender_name,
-                COUNT(DISTINCT n2.user_id) AS recipient_count
+                COUNT(DISTINCT n2.user_id) AS recipient_count,
+                COUNT(DISTINCT nr.user_id) AS read_count
              FROM notifications n
              LEFT JOIN notifications n2 ON n2.broadcast_id = n.broadcast_id OR (n.broadcast_id IS NULL AND n2.id = n.id)
              LEFT JOIN users s ON s.id = n.sender_id
+             LEFT JOIN notification_read_receipts nr ON nr.notification_id = n2.id
              WHERE n.is_announcement = 1
                AND (n.broadcast_id IS NULL OR n.id = n.broadcast_id)
              GROUP BY n.id, n.title, n.target_type, n.sender_id, n.created_at, n.broadcast_id, s.full_name

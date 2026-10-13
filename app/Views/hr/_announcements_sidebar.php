@@ -74,6 +74,7 @@ $historyItems = $historyItems ?? [];
           <div class="mail-history-meta">
             <span class="badge badge-light"><?= $targetLabels[$h['target_type']] ?? $h['target_type'] ?></span>
             <span><?= (int)($h['recipient_count'] ?? 0) ?> مستلم</span>
+            <span class="badge badge-info" title="عدد المشاهدات (من فتحوا التعميم)"><i class="fa-solid fa-eye"></i> <?= (int)($h['read_count'] ?? 0) ?></span>
           </div>
         </a>
       </li>
