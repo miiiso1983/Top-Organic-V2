@@ -2004,7 +2004,7 @@ class HrController extends Controller
         $advances = Database::query($sql, $params)->fetchAll();
         $employees = Database::query("SELECT id, full_name, base_salary FROM employees WHERE file_status='open' ORDER BY full_name")->fetchAll();
 
-        $this->view('hr/advances', [
+        $this->view('accounting/advances', [
             'title' => 'السلف', 'advances' => $advances, 'employees' => $employees,
             'employeeId' => $employeeId, 'status' => $status, 'scope' => $scope,
         ]);
@@ -2015,12 +2015,12 @@ class HrController extends Controller
         $employeeId = (int)$this->input('employee_id');
         if (!HrService::isEmployeeFileOpen($employeeId)) {
             $this->flash('danger', 'ملف الموظف مغلق أو مأرشف، لا يمكن تقديم طلب سلفة');
-            Response::redirect('/hr/advances');
+            Response::redirect('/accounting/advances');
         }
         $amount = (float)$this->input('amount');
         if ($amount <= 0) {
             $this->flash('danger', 'المبلغ يجب أن يكون أكبر من صفر');
-            Response::redirect('/hr/advances');
+            Response::redirect('/accounting/advances');
         }
         $installments = max(1, (int)$this->input('installments', 1));
         $advanceType = (string)$this->input('advance_type', 'short');
@@ -2038,7 +2038,7 @@ class HrController extends Controller
                 $installmentPercentage = (float)$this->input('installment_percentage', 0);
                 if ($installmentPercentage <= 0 || $installmentPercentage > 100) {
                     $this->flash('danger', 'يجب إدخال نسبة قسط شهري صحيحة (بين 1 و100)');
-                    Response::redirect('/hr/advances');
+                    Response::redirect('/accounting/advances');
                 }
                 $emp = Database::query("SELECT base_salary FROM employees WHERE id = ?", [$employeeId])->fetch();
                 $installmentAmount = round((float)($emp['base_salary'] ?? 0) * $installmentPercentage / 100, 2);
@@ -2050,7 +2050,7 @@ class HrController extends Controller
             }
             if ($installments < 2) {
                 $this->flash('danger', 'السلف طويلة الأجل تتطلب عدد أقساط لا يقل عن 2');
-                Response::redirect('/hr/advances');
+                Response::redirect('/accounting/advances');
             }
         }
         Database::query(
@@ -2079,7 +2079,7 @@ class HrController extends Controller
         } else {
             $this->flash('warning', 'تم تقديم طلب السلفة لكن لا يوجد مسار موافقات نشط لهذا النوع');
         }
-        Response::redirect('/hr/advances');
+        Response::redirect('/accounting/advances');
     }
 
     public function showAdvance(string $id): void
@@ -2096,7 +2096,7 @@ class HrController extends Controller
             [$advanceId]
         )->fetch();
         if (!$advance) {
-            Response::redirect('/hr/advances');
+            Response::redirect('/accounting/advances');
         }
         $schedule = Database::query(
             "SELECT s.*, p.period AS payroll_period FROM advance_repayment_schedule s
@@ -2119,7 +2119,7 @@ class HrController extends Controller
         $bankAccounts = Database::query("SELECT id, name, bank_name, account_no FROM bank_accounts WHERE is_active = 1 ORDER BY name, bank_name")->fetchAll();
         $cashRegisters = Database::query("SELECT id, name FROM cash_registers WHERE is_active = 1 ORDER BY name")->fetchAll();
 
-        $this->view('hr/advances_show', [
+        $this->view('accounting/advances_show', [
             'title' => 'تفاصيل السلفة',
             'advance' => $advance,
             'schedule' => $schedule,
@@ -2136,15 +2136,15 @@ class HrController extends Controller
         $advanceId = (int)$id;
         $advance = Database::query("SELECT * FROM salary_advances WHERE id = ?", [$advanceId])->fetch();
         if (!$advance || $advance['status'] !== 'pending') {
-            Response::redirect('/hr/advances');
+            Response::redirect('/accounting/advances');
         }
-        if (!Auth::can('hr.advance.approve') && !Auth::can('approvals.decide')) {
+        if (!Auth::can('hr.advance.approve') && !Auth::can('approvals.decide') && !Auth::can('accounting.manage')) {
             $this->flash('danger', 'ليس لديك صلاحية');
-            Response::redirect('/hr/advances');
+            Response::redirect('/accounting/advances');
         }
         if (!HrService::isEmployeeFileOpen((int)$advance['employee_id'])) {
             $this->flash('danger', 'ملف الموظف مغلق أو مأرشف، لا يمكن اتخاذ قرار');
-            Response::redirect('/hr/advances');
+            Response::redirect('/accounting/advances');
         }
         $decision = $this->input('decision') === 'approved' ? 'approved' : 'rejected';
         $notes = (string)$this->input('notes');
@@ -2169,7 +2169,7 @@ class HrController extends Controller
             Database::rollBack();
             $this->flash('danger', 'خطأ: ' . $e->getMessage());
         }
-        Response::redirect('/hr/advances');
+        Response::redirect('/accounting/advances');
     }
 
     public function payAdvance(string $id): void
@@ -2177,15 +2177,15 @@ class HrController extends Controller
         $advanceId = (int)$id;
         $advance = Database::query("SELECT * FROM salary_advances WHERE id = ?", [$advanceId])->fetch();
         if (!$advance || $advance['status'] !== 'approved' || (float)$advance['paid_amount'] > 0) {
-            Response::redirect('/hr/advances');
+            Response::redirect('/accounting/advances');
         }
-        if (!Auth::can('payroll.manage')) {
+        if (!Auth::can('payroll.manage') && !Auth::can('accounting.manage')) {
             $this->flash('danger', 'ليس لديك صلاحية صرف السلف');
-            Response::redirect('/hr/advances');
+            Response::redirect('/accounting/advances');
         }
         if (!HrService::isEmployeeFileOpen((int)$advance['employee_id'])) {
             $this->flash('danger', 'ملف الموظف مغلق أو مأرشف، لا يمكن الصرف');
-            Response::redirect('/hr/advances');
+            Response::redirect('/accounting/advances');
         }
 
         $paymentMethod = in_array($this->input('payment_method'), ['cash', 'bank'], true) ? $this->input('payment_method') : 'cash';
@@ -2235,7 +2235,7 @@ class HrController extends Controller
             Database::rollBack();
             $this->flash('danger', 'خطأ: ' . $e->getMessage());
         }
-        Response::redirect('/hr/advances/' . $advanceId);
+        Response::redirect('/accounting/advances/' . $advanceId);
     }
 
     public function overtime(): void
@@ -3456,9 +3456,7 @@ class HrController extends Controller
         $components = [
             'tips' => 'التيبس',
             'social_security' => 'الضمان الاجتماعي',
-            'loadings' => 'التحميلات',
             'travel_tickets' => 'تذاكر السفر',
-            'advances' => 'السلف',
         ];
         $period = (string)($_GET['period'] ?? date('Y-m'));
         if (!preg_match('/^\d{4}-\d{2}$/', $period)) {
@@ -3484,14 +3482,8 @@ class HrController extends Controller
             case 'social_security':
                 ImportHelper::downloadTemplate(['emp_code', 'period', 'amount', 'notes'], 'social_security_template.xlsx', ['EMP001', '2026-09', 75000, 'ضمان شهر 9']);
                 break;
-            case 'loadings':
-                ImportHelper::downloadTemplate(['emp_code', 'period', 'category', 'amount', 'notes'], 'loadings_template.xlsx', ['EMP001', '2026-09', 'تحميلات', 100000, 'تحميلات شهر 9']);
-                break;
             case 'travel_tickets':
                 ImportHelper::downloadTemplate(['emp_code', 'period', 'amount', 'departure_date', 'return_date', 'travel_method', 'notes'], 'travel_tickets_template.xlsx', ['EMP001', '2026-09', 500000, '2026-09-10', '2026-09-20', 'طيران', 'تذكرة سفر']);
-                break;
-            case 'advances':
-                ImportHelper::downloadTemplate(['emp_code', 'amount', 'installments', 'is_long_term', 'approved_at', 'reason'], 'advances_template.xlsx', ['EMP001', 500000, 5, 0, '2026-01-15', 'سلفة شخصية']);
                 break;
             default:
                 $this->flash('danger', 'نوع استيراد غير معروف');
@@ -3519,9 +3511,7 @@ class HrController extends Controller
         $required = match ($component) {
             'social_security' => ['emp_code', 'period', 'amount'],
             'tips' => ['emp_code', 'period', 'full_amount', 'working_days'],
-            'loadings' => ['emp_code', 'period', 'category', 'amount'],
             'travel_tickets' => ['emp_code', 'period', 'amount'],
-            'advances' => ['emp_code', 'amount', 'installments'],
             default => []
         };
         if (!$required) {
@@ -3598,8 +3588,6 @@ class HrController extends Controller
             'departure_date',
             'return_date',
             'travel_method',
-            'installments',
-            'is_long_term',
             'approved_at',
             'reason',
             'notes',
@@ -3607,9 +3595,7 @@ class HrController extends Controller
         $samples = [
             ['emp_code' => 'EMP001', 'type' => 'tips', 'period' => '2026-09', 'full_amount' => 300000, 'working_days' => 30, 'notes' => 'تيبس شهر 9'],
             ['emp_code' => 'EMP001', 'type' => 'social_security', 'period' => '2026-09', 'amount' => 75000, 'notes' => 'ضمان شهر 9'],
-            ['emp_code' => 'EMP001', 'type' => 'loadings', 'period' => '2026-09', 'category' => 'تحميلات', 'amount' => 100000, 'notes' => 'تحميلات شهر 9'],
             ['emp_code' => 'EMP001', 'type' => 'travel_tickets', 'period' => '2026-09', 'amount' => 500000, 'departure_date' => '2026-09-10', 'return_date' => '2026-09-20', 'travel_method' => 'طيران', 'notes' => 'تذكرة سفر'],
-            ['emp_code' => 'EMP001', 'type' => 'advances', 'amount' => 500000, 'installments' => 5, 'is_long_term' => 0, 'approved_at' => '2026-01-15', 'reason' => 'سلفة شخصية'],
             ['emp_code' => 'EMP001', 'type' => 'raise', 'period' => '2026-09', 'amount' => 50000, 'reason' => 'زيادة سنوية'],
             ['emp_code' => 'EMP001', 'type' => 'bonus', 'period' => '2026-09', 'amount' => 100000, 'reason' => 'مكافأة أداء'],
             ['emp_code' => 'EMP001', 'type' => 'tips_addition', 'period' => '2026-09', 'amount' => 30000, 'reason' => 'إضافي تيبس'],
@@ -3729,9 +3715,7 @@ class HrController extends Controller
         $map = [
             'tips' => ['tips', 'tip', 'تيبس'],
             'social_security' => ['social_security', 'ضمان', 'الضمان', 'الضمان الاجتماعي'],
-            'loadings' => ['loadings', 'loading', 'تحميلات', 'التحميلات'],
             'travel_tickets' => ['travel_tickets', 'تذاكر', 'تذاكر السفر'],
-            'advances' => ['advances', 'advance', 'سلف', 'سلفة', 'السلف'],
             'raise' => ['raise', 'زيادة', 'الزيادة'],
             'bonus' => ['bonus', 'مكافأة', 'المكافأة'],
             'deduction' => ['deduction', 'خصم', 'الخصم'],
@@ -3756,9 +3740,7 @@ class HrController extends Controller
         return match ($component) {
             'social_security' => ['emp_code', 'period', 'amount'],
             'tips' => ['emp_code', 'period', 'full_amount', 'working_days'],
-            'loadings' => ['emp_code', 'period', 'category', 'amount'],
             'travel_tickets' => ['emp_code', 'period', 'amount'],
-            'advances' => ['emp_code', 'amount', 'installments'],
             'raise', 'bonus', 'tips_addition' => ['emp_code', 'amount'],
             'deduction', 'penalty', 'work_days_settlement' => ['emp_code'],
             'allowance' => ['emp_code', 'category', 'amount'],
@@ -3776,19 +3758,8 @@ class HrController extends Controller
             case 'social_security':
                 HrService::setEmployeeMonthlySocialSecurity($employeeId, (string)$row['period'], (float)$row['amount'], (string)($row['notes'] ?? ''), $userId);
                 break;
-            case 'loadings':
-                HrService::setEmployeeMonthlyLoading($employeeId, (string)$row['period'], (string)$row['category'], (float)$row['amount'], (string)($row['notes'] ?? ''), $userId);
-                break;
             case 'travel_tickets':
                 HrService::addEmployeeTravelTicket($employeeId, (string)$row['period'], (float)$row['amount'], (string)($row['departure_date'] ?? ''), (string)($row['return_date'] ?? ''), (string)($row['travel_method'] ?? ''), (string)($row['notes'] ?? ''), $userId);
-                break;
-            case 'advances':
-                $isLong = (int)($row['is_long_term'] ?? 0) === 1 ? 'long' : 'short';
-                $approvedAt = !empty($row['approved_at']) ? ImportHelper::parseExcelDate($row['approved_at']) : date('Y-m-d');
-                Database::query(
-                    "INSERT INTO salary_advances (employee_id, amount, advance_type, installments, reason, status, approved_by, approved_at) VALUES (?,?,?,?,?,?,?,?)",
-                    [$employeeId, (float)$row['amount'], $isLong, (int)($row['installments'] ?? 1), (string)($row['reason'] ?? ''), 'approved', $userId, $approvedAt]
-                );
                 break;
             case 'raise':
             case 'bonus':
@@ -4768,9 +4739,9 @@ class HrController extends Controller
 
     public function monthlyLoadings(): void
     {
-        if (!Auth::can('payroll.manage')) {
+        if (!Auth::can('payroll.manage') && !Auth::can('accounting.manage')) {
             $this->flash('danger', 'ليس لديك صلاحية');
-            Response::redirect('/hr/payroll');
+            Response::redirect('/accounting');
         }
         $employeeId = (int)$this->input('employee_id', 0);
         $period = (string)$this->input('period', date('Y-m'));
@@ -4779,7 +4750,7 @@ class HrController extends Controller
         if ($employeeId) {
             $records = HrService::getEmployeeLoadings($employeeId);
         }
-        $this->view('hr/loadings', [
+        $this->view('accounting/loadings', [
             'title' => 'التحميلات الشهرية', 'employees' => $employees, 'records' => $records,
             'employeeId' => $employeeId, 'period' => $period,
         ]);
@@ -4787,9 +4758,9 @@ class HrController extends Controller
 
     public function storeMonthlyLoading(): void
     {
-        if (!Auth::can('payroll.manage')) {
+        if (!Auth::can('payroll.manage') && !Auth::can('accounting.manage')) {
             $this->flash('danger', 'ليس لديك صلاحية');
-            Response::redirect('/hr/payroll');
+            Response::redirect('/accounting');
         }
         $employeeId = (int)$this->input('employee_id', 0);
         $period = (string)$this->input('period', date('Y-m'));
@@ -4802,18 +4773,18 @@ class HrController extends Controller
         } else {
             $this->flash('danger', 'بيانات غير صحيحة');
         }
-        Response::redirect('/hr/payroll/loadings?employee_id=' . $employeeId . '&period=' . urlencode($period));
+        Response::redirect('/accounting/loadings?employee_id=' . $employeeId . '&period=' . urlencode($period));
     }
 
     public function deleteMonthlyLoading(string $id): void
     {
-        if (!Auth::can('payroll.manage')) {
+        if (!Auth::can('payroll.manage') && !Auth::can('accounting.manage')) {
             $this->flash('danger', 'ليس لديك صلاحية');
-            Response::redirect('/hr/payroll');
+            Response::redirect('/accounting');
         }
         HrService::deleteEmployeeMonthlyLoading((int)$id);
         $this->flash('success', 'تم حذف التحميل');
-        Response::redirect('/hr/payroll/loadings');
+        Response::redirect('/accounting/loadings');
     }
 
     /** إعدادات شرائح الضريبة */

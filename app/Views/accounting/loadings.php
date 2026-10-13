@@ -1,7 +1,7 @@
 <?php use App\Core\Helpers; ?>
 <div class="card">
   <h3>التحميلات الشهرية للموظفين</h3>
-  <form method="get" action="/hr/payroll/loadings" class="form-inline">
+  <form method="get" action="/accounting/loadings" class="form-inline">
     <div class="form-row"><label>الموظف</label>
       <select name="employee_id">
         <option value="0">اختر موظفاً</option>
@@ -14,7 +14,7 @@
   </form>
 
   <?php if ($employeeId): ?>
-  <form method="post" action="/hr/payroll/loadings" class="form-inline" style="margin-top:15px">
+  <form method="post" action="/accounting/loadings" class="form-inline" style="margin-top:15px">
     <input type="hidden" name="employee_id" value="<?= $employeeId ?>">
     <div class="form-row"><label>الفترة</label><input type="month" name="period" value="<?= Helpers::e($period) ?>" required></div>
     <div class="form-row"><label>الفئة</label>
@@ -41,7 +41,7 @@
       <td><?= Helpers::money($r['amount']) ?></td>
       <td><?= Helpers::e($r['notes'] ?? '-') ?></td>
       <td>
-        <form method="post" action="/hr/payroll/loadings/<?= $r['id'] ?>/delete" style="display:inline" onsubmit="return confirm('تأكيد الحذف؟')">
+        <form method="post" action="/accounting/loadings/<?= $r['id'] ?>/delete" style="display:inline" onsubmit="return confirm('تأكيد الحذف؟')">
           <button class="btn btn-sm btn-danger">حذف</button>
         </form>
       </td>

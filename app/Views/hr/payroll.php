@@ -129,7 +129,7 @@ $exportBase = http_build_query($exportQuery);
     <a href="/hr/payroll/tips" class="btn btn-sm btn-secondary"><i class="fa-solid fa-coins"></i> التيبس</a>
     <a href="/hr/payroll/social-security" class="btn btn-sm btn-secondary"><i class="fa-solid fa-hand-holding-dollar"></i> الضمان</a>
     <a href="/hr/payroll/travel-tickets" class="btn btn-sm btn-secondary"><i class="fa-solid fa-plane"></i> تذاكر السفر</a>
-    <a href="/hr/payroll/loadings" class="btn btn-sm btn-secondary"><i class="fa-solid fa-weight-hanging"></i> التحميلات</a>
+    <a href="/accounting/loadings" class="btn btn-sm btn-secondary"><i class="fa-solid fa-weight-hanging"></i> التحميلات</a>
     <a href="/hr/payroll/tax-brackets" class="btn btn-sm btn-secondary"><i class="fa-solid fa-bars"></i> شرائح الضريبة</a>
     <a href="/hr/payroll/messages?period=<?= urlencode($period) ?>" class="btn btn-sm btn-secondary"><i class="fa-solid fa-comment-sms"></i> رسائل</a>
     <a href="/hr/headcount?period=<?= urlencode($period) ?>" class="btn btn-sm btn-secondary"><i class="fa-solid fa-users-gear"></i> الأعداد</a>

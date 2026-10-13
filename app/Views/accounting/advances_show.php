@@ -31,9 +31,9 @@
   </table>
 
   <div class="flex-between" style="margin-top:15px">
-    <a href="/hr/advances" class="btn btn-light">العودة للقائمة</a>
-    <?php if ($advance['status'] === 'approved' && (float)($advance['paid_amount'] ?? 0) <= 0 && \App\Core\Auth::can('payroll.manage')): ?>
-    <form method="post" action="/hr/advances/<?= $advance['id'] ?>/pay" onsubmit="return confirm('تأكيد صرف السلفة؟')" id="disburse-form">
+    <a href="/accounting/advances" class="btn btn-light">العودة للقائمة</a>
+    <?php if ($advance['status'] === 'approved' && (float)($advance['paid_amount'] ?? 0) <= 0 && (\App\Core\Auth::can('payroll.manage') || \App\Core\Auth::can('accounting.manage'))): ?>
+    <form method="post" action="/accounting/advances/<?= $advance['id'] ?>/pay" onsubmit="return confirm('تأكيد صرف السلفة؟')" id="disburse-form">
       <div class="form-inline" style="gap:10px; margin-bottom:10px">
         <div class="form-row">
           <label>طريقة الدفع</label>
@@ -113,12 +113,12 @@ function togglePaymentMethod() {
 <?php if ($canDecide): ?>
 <div class="card" style="margin-top:16px">
   <h3><i class="fa-solid fa-pen-to-square"></i> اتخاذ قرار</h3>
-  <form method="post" action="/hr/advances/<?= $advance['id'] ?>/decide" class="form-inline">
+  <form method="post" action="/accounting/advances/<?= $advance['id'] ?>/decide" class="form-inline">
     <input type="hidden" name="decision" value="approved">
     <div class="form-row"><label>ملاحظات</label><input name="notes" placeholder="ملاحظات الموافقة"></div>
     <button class="btn btn-success">موافقة</button>
   </form>
-  <form method="post" action="/hr/advances/<?= $advance['id'] ?>/decide" class="form-inline" style="margin-top:10px">
+  <form method="post" action="/accounting/advances/<?= $advance['id'] ?>/decide" class="form-inline" style="margin-top:10px">
     <input type="hidden" name="decision" value="rejected">
     <div class="form-row"><label>ملاحظات</label><input name="notes" placeholder="ملاحظات الرفض"></div>
     <button class="btn btn-danger">رفض</button>

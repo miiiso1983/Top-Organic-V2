@@ -105,4 +105,20 @@
     <div class="desc">تحليل استهلاك المخزون</div>
   </a>
   <?php endif; ?>
+
+  <?php if (Auth::can('accounting.view')): ?>
+  <a href="/accounting/advances" class="res-card">
+    <div class="icon"><i class="fa-solid fa-hand-holding-dollar"></i></div>
+    <div class="title">السلف</div>
+    <div class="desc">طلبات السلف ومسار موافقاتها</div>
+  </a>
+  <?php endif; ?>
+
+  <?php if (Auth::can('accounting.view')): ?>
+  <a href="/accounting/loadings" class="res-card">
+    <div class="icon"><i class="fa-solid fa-weight-hanging"></i></div>
+    <div class="title">التحميلات الشهرية</div>
+    <div class="desc">تحميلات الموظفين الشهرية</div>
+  </a>
+  <?php endif; ?>
 </div>

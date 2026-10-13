@@ -2,7 +2,7 @@
 <?php $statusLabels = ['pending'=>'بانتظار الموافقة','approved'=>'معتمدة','rejected'=>'مرفوضة','paid'=>'تم الصرف','settled'=>'مسددة']; ?>
 <div class="card">
   <h3>طلب سلفة (قصيرة/طويلة الأجل — يخضع لمسار الموافقات)</h3>
-  <form method="post" action="/hr/advances" class="form-inline" id="advance-form" onsubmit="return validateAdvanceForm(this);">
+  <form method="post" action="/accounting/advances" class="form-inline" id="advance-form" onsubmit="return validateAdvanceForm(this);">
     <div class="form-row"><label>الموظف</label>
       <select name="employee_id" required>
         <?php foreach ($employees as $e): ?>
@@ -66,7 +66,7 @@
     </div>
   </div>
 
-  <form method="get" action="/hr/advances" class="form-inline" style="margin-bottom:15px">
+  <form method="get" action="/accounting/advances" class="form-inline" style="margin-bottom:15px">
     <input type="hidden" name="scope" value="<?= Helpers::e($scope) ?>">
     <div class="form-row"><label>الموظف</label>
       <select name="employee_id">
@@ -85,7 +85,7 @@
       </select>
     </div>
     <button class="btn btn-secondary">تصفية</button>
-    <a href="/hr/advances" class="btn btn-light">إعادة</a>
+    <a href="/accounting/advances" class="btn btn-light">إعادة</a>
   </form>
 
   <table>
@@ -104,12 +104,12 @@
       <td><?= $a['workflow_request_id'] ? ($a['status'] === 'pending' ? 'المرحلة ' . ((int)($a['workflow_current_step'] ?? 1)) : 'مكتمل') : 'غير مرتبط' ?></td>
       <td><?= date('m/d', strtotime($a['created_at'])) ?></td>
       <td>
-        <a href="/hr/advances/<?= $a['id'] ?>" class="btn btn-sm btn-light">عرض</a>
+        <a href="/accounting/advances/<?= $a['id'] ?>" class="btn btn-sm btn-light">عرض</a>
         <?php if ($a['workflow_request_id']): ?>
         <a href="/workflows/requests/<?= $a['workflow_request_id'] ?>" class="btn btn-sm btn-secondary">Workflow</a>
         <?php endif; ?>
-        <?php if ($a['status'] === 'approved' && (float)($a['paid_amount'] ?? 0) <= 0 && \App\Core\Auth::can('payroll.manage')): ?>
-        <form method="post" action="/hr/advances/<?= $a['id'] ?>/pay" style="display:inline" onsubmit="return confirm('تأكيد صرف السلفة؟')">
+        <?php if ($a['status'] === 'approved' && (float)($a['paid_amount'] ?? 0) <= 0 && (\App\Core\Auth::can('payroll.manage') || \App\Core\Auth::can('accounting.manage'))): ?>
+        <form method="post" action="/accounting/advances/<?= $a['id'] ?>/pay" style="display:inline" onsubmit="return confirm('تأكيد صرف السلفة؟')">
           <button class="btn btn-sm btn-primary">صرف</button>
         </form>
         <?php endif; ?>

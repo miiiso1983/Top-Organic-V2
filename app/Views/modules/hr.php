@@ -80,7 +80,7 @@
     <div class="desc">إدارة الإجازات</div>
   </a>
 
-  <a href="/hr/advances" class="res-card">
+  <a href="/accounting/advances" class="res-card">
     <div class="icon"><i class="fa-solid fa-hand-holding-dollar"></i></div>
     <div class="title">السلف</div>
     <div class="desc">طلبات السلف</div>

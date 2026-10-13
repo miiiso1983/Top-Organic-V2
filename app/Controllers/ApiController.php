@@ -1060,7 +1060,7 @@ class ApiController extends Controller
                     (int)$advance['user_id'],
                     'نتيجة طلب السلفة',
                     'تم ' . ($finalStatus === 'approved' ? 'الموافقة' : 'الرفض') . ' على طلب سلفتك',
-                    '/hr/advances/' . $advanceId
+                    '/accounting/advances/' . $advanceId
                 );
             }
         }

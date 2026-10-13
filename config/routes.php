@@ -407,6 +407,16 @@ $router->get('/accounting/material-consumption', [AccountingController::class, '
 $router->get('/accounting/accounts/template', [AccountingController::class, 'accountsTemplate'], ['auth', 'perm:accounting.manage']);
 $router->post('/accounting/accounts/import', [AccountingController::class, 'importAccounts'], ['auth', 'perm:accounting.manage']);
 
+// السلف والتحميلات الشهرية (تسويات مالية مخصصة ضمن المحاسبة — نفس منطق HrController/HrService الحالي)
+$router->get('/accounting/advances', [HrController::class, 'advances'], ['auth', 'perm:accounting.view,hr.view']);
+$router->post('/accounting/advances', [HrController::class, 'storeAdvance'], ['auth', 'perm:accounting.manage,hr.view']);
+$router->get('/accounting/advances/{id}', [HrController::class, 'showAdvance'], ['auth', 'perm:accounting.view,hr.view']);
+$router->post('/accounting/advances/{id}/decide', [HrController::class, 'decideAdvance'], ['auth', 'perm:accounting.manage,hr.advance.approve,approvals.decide,workflow.decide']);
+$router->post('/accounting/advances/{id}/pay', [HrController::class, 'payAdvance'], ['auth', 'perm:accounting.manage,payroll.manage']);
+$router->get('/accounting/loadings', [HrController::class, 'monthlyLoadings'], ['auth', 'perm:accounting.view,payroll.manage']);
+$router->post('/accounting/loadings', [HrController::class, 'storeMonthlyLoading'], ['auth', 'perm:accounting.manage,payroll.manage']);
+$router->post('/accounting/loadings/{id}/delete', [HrController::class, 'deleteMonthlyLoading'], ['auth', 'perm:accounting.manage,payroll.manage']);
+
 // الموارد البشرية
 $router->get('/hr/employees', [HrController::class, 'employees'], ['auth', 'perm:hr.view']);
 $router->post('/hr/employees/sync-accounts', [HrController::class, 'syncEmployeeAccounts'], ['auth', 'perm:hr.manage']);
@@ -481,12 +491,6 @@ $router->post('/hr/jobs/import', [HrController::class, 'importJobs'], ['auth', '
 $router->get('/hr/jobs/export', [HrController::class, 'exportJobs'], ['auth', 'perm:hr.job.manage']);
 $router->post('/hr/jobs/{id}', [HrController::class, 'updateJob'], ['auth', 'perm:hr.job.manage']);
 $router->post('/hr/jobs/{id}/delete', [HrController::class, 'deleteJob'], ['auth', 'perm:hr.job.manage']);
-$router->get('/hr/advances', [HrController::class, 'advances'], ['auth', 'perm:hr.view']);
-$router->post('/hr/advances', [HrController::class, 'storeAdvance'], ['auth', 'perm:hr.view']);
-$router->get('/hr/advances/{id}', [HrController::class, 'showAdvance'], ['auth', 'perm:hr.view']);
-$router->post('/hr/advances/{id}/decide', [HrController::class, 'decideAdvance'], ['auth', 'perm:hr.advance.approve,approvals.decide,workflow.decide']);
-$router->post('/hr/advances/{id}/pay', [HrController::class, 'payAdvance'], ['auth', 'perm:payroll.manage']);
-
 $router->get('/hr/overtime', [HrController::class, 'overtime'], ['auth', 'perm:hr.view']);
 $router->post('/hr/overtime', [HrController::class, 'storeOvertime'], ['auth', 'perm:hr.view']);
 $router->get('/hr/overtime/{id}', [HrController::class, 'showOvertime'], ['auth', 'perm:hr.view']);
@@ -531,9 +535,6 @@ $router->post('/hr/payroll/social-security/{id}/delete', [HrController::class, '
 $router->get('/hr/payroll/travel-tickets', [HrController::class, 'travelTickets'], ['auth', 'perm:payroll.manage']);
 $router->post('/hr/payroll/travel-tickets', [HrController::class, 'storeTravelTicket'], ['auth', 'perm:payroll.manage']);
 $router->post('/hr/payroll/travel-tickets/{id}/delete', [HrController::class, 'deleteTravelTicket'], ['auth', 'perm:payroll.manage']);
-$router->get('/hr/payroll/loadings', [HrController::class, 'monthlyLoadings'], ['auth', 'perm:payroll.manage']);
-$router->post('/hr/payroll/loadings', [HrController::class, 'storeMonthlyLoading'], ['auth', 'perm:payroll.manage']);
-$router->post('/hr/payroll/loadings/{id}/delete', [HrController::class, 'deleteMonthlyLoading'], ['auth', 'perm:payroll.manage']);
 $router->get('/hr/payroll/tax-brackets', [HrController::class, 'taxBrackets'], ['auth', 'perm:payroll.manage']);
 $router->post('/hr/payroll/tax-brackets', [HrController::class, 'storeTaxBracket'], ['auth', 'perm:payroll.manage']);
 $router->post('/hr/payroll/tax-brackets/{id}/toggle', [HrController::class, 'toggleTaxBracket'], ['auth', 'perm:payroll.manage']);
