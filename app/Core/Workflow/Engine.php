@@ -74,7 +74,20 @@ final class Engine
         );
         $next = self::followEdge((int)$node['id'], 'default');
         if (!$next) { self::complete($requestId, 'approved', $actorId, ''); return; }
+        self::notifyRequesterStepAdvanced($req, $node, $next);
         self::advance($requestId, $next, $actorId);
+    }
+
+    /** إشعار مُقدّم الطلب بأن مرحلته الحالية اعتُمدت وانتقل الطلب لمرحلة تالية (دون إنهاء الطلب بعد) */
+    private static function notifyRequesterStepAdvanced(array $req, array $fromNode, array $toNode): void
+    {
+        $requesterId = (int)($req['requester_id'] ?? 0);
+        if (!$requesterId) return;
+        $title = 'تمت الموافقة على طلبك وانتقل للمرحلة التالية';
+        $body = (string)($req['title'] ?? '') . ' — انتقل إلى: ' . (string)($toNode['title'] ?? '');
+        $link = '/workflows/requests/' . (int)$req['id'];
+        Helpers::notify($requesterId, $title, $body, $link, null, null, [], null, 'request', (int)$req['id'], 'step_approved');
+        PushService::queue($requesterId, $title, $body, $link);
     }
 
     /**
@@ -432,6 +445,13 @@ final class Engine
                 }
                 Database::query("UPDATE requests SET current_node_id = ?, updated_at = NOW() WHERE id = ?", [(int)$prev, (int)$req['id']]);
                 AuditLogger::log((int)$req['id'], 'returned_for_edit', (int)$prev, $actorId, 'إعادة لمرحلة سابقة: ' . $notes);
+                if ((int)($req['requester_id'] ?? 0)) {
+                    $title = 'تم رفض طلبك في مرحلة الاعتماد وأعيد لمرحلة سابقة';
+                    $body = (string)($req['title'] ?? '') . ($notes !== '' ? "\nملاحظة: " . $notes : '');
+                    $link = '/workflows/requests/' . (int)$req['id'];
+                    Helpers::notify((int)$req['requester_id'], $title, $body, $link, null, null, [], null, 'request', (int)$req['id'], 'step_rejected');
+                    PushService::queue((int)$req['requester_id'], $title, $body, $link);
+                }
                 return;
             }
         }
