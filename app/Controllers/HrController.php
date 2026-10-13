@@ -2555,7 +2555,7 @@ class HrController extends Controller
         $payrolls = Database::query(
             "SELECT p.*, e.full_name, e.emp_code, e.department, e.position, e.phone,
                     e.branch_id, e.bank_name, e.bank_account_no, e.bank_iban,
-                    e.base_salary AS full_base_salary,
+                    e.base_salary AS full_base_salary, e.required_hours,
                     b.name AS branch_name,
                     d.name AS department_name, j.title AS job_title,
                     ro.name AS role_name, ro.level AS role_level
@@ -2570,6 +2570,25 @@ class HrController extends Controller
             $params
         )->fetchAll();
 
+        // طلبات العمل الإضافي المقدّمة خلال هذه الفترة (باستثناء المرفوضة) — تُجمع بالساعات لكل موظف،
+        // وتُعرض لاحقاً بالأيام (الساعات ÷ ساعات الدوام اليومية للموظف) في عمود مستقل عن عمود
+        // «الإضافي» الذي يعرض فقط ما طُبّق فعلياً على الراتب بعد اكتمال الموافقة.
+        $overtimeRequestTotals = [];
+        if (!empty($payrolls)) {
+            $otEmployeeIds = array_values(array_unique(array_map(function ($p) { return (int)$p['employee_id']; }, $payrolls)));
+            $otPlaceholders = implode(',', array_fill(0, count($otEmployeeIds), '?'));
+            $otRows = Database::query(
+                "SELECT employee_id, COUNT(*) AS cnt, COALESCE(SUM(hours),0) AS total_hours
+                 FROM overtime_requests
+                 WHERE employee_id IN ($otPlaceholders) AND DATE_FORMAT(request_date, '%Y-%m') = ? AND status != 'rejected'
+                 GROUP BY employee_id",
+                array_merge($otEmployeeIds, [$period])
+            )->fetchAll();
+            foreach ($otRows as $r) {
+                $overtimeRequestTotals[(int)$r['employee_id']] = ['count' => (int)$r['cnt'], 'hours' => (float)$r['total_hours']];
+            }
+        }
+
         // قيمة المتبقي: (عدد أيام الشهر − عدد أيام البصمة المسجلة) × (الراتب الأساسي المعدّل ÷ 30)
         $daysInMonthForRemaining = (int) date('t', strtotime($period . '-01'));
         foreach ($payrolls as &$rp) {
@@ -2578,6 +2597,12 @@ class HrController extends Controller
             $dailyRate = HrService::adjustedMonthlyBase((int)$rp['employee_id'], $period) / 30;
             $rp['remaining_days'] = $remainingDays;
             $rp['remaining_value'] = round($remainingDays * $dailyRate, 2);
+
+            $otReq = $overtimeRequestTotals[(int)$rp['employee_id']] ?? ['count' => 0, 'hours' => 0.0];
+            $requiredHoursForOt = (float)($rp['required_hours'] ?? 0) ?: 8.0;
+            $rp['overtime_request_hours'] = $otReq['hours'];
+            $rp['overtime_request_count'] = $otReq['count'];
+            $rp['overtime_request_days'] = round($otReq['hours'] / $requiredHoursForOt, 2);
         }
         unset($rp);
 
@@ -2588,7 +2613,8 @@ class HrController extends Controller
         }
         if ($format === 'excel' || $format === 'pdf') {
             $colOrder = array_filter(explode(',', (string)($_GET['cols'] ?? '')));
-            $this->exportPayroll($payrolls, $period, $format, $colOrder);
+            $hiddenCols = array_filter(explode(',', (string)($_GET['hidden'] ?? '')));
+            $this->exportPayroll($payrolls, $period, $format, $colOrder, $hiddenCols);
             return;
         }
 
@@ -2664,7 +2690,7 @@ class HrController extends Controller
      * تصدير كشف الرواتب إلى Excel/PDF بنفس الأعمدة المالية التفاعلية الموجودة في hr_views/payroll.php وبنفس ترتيبها المعروض (الافتراضي أو المحفوظ من المستخدم عبر السحب والإفلات).
      * @param array $colOrder ترتيب مفاتيح الأعمدة الممررة من واجهة الرواتب (14 عمودًا التفصيلية فقط)
      */
-    private function exportPayroll(array $payrolls, string $period, string $format, array $colOrder = []): void
+    private function exportPayroll(array $payrolls, string $period, string $format, array $colOrder = [], array $hiddenCols = []): void
     {
         $statusLabels = ['draft'=>'مسودة','approved'=>'معتمد','paid'=>'مدفوع'];
 
@@ -2677,6 +2703,9 @@ class HrController extends Controller
             'overtime' => ['label' => 'إضافي (أيام/مبلغ)', 'cell' => function ($p) {
                 return (int)($p['overtime_days'] ?? 0) . ' يوم' . ((float)($p['overtime'] ?? 0) > 0 ? ' / ' . number_format((float)$p['overtime'], 0) : '');
             }, 'total' => function ($p) { return (float)($p['overtime'] ?? 0); }],
+            'overtime_request' => ['label' => 'طلب العمل الإضافي (أيام)', 'cell' => function ($p) {
+                return rtrim(rtrim(number_format((float)($p['overtime_request_days'] ?? 0), 2), '0'), '.') . ' يوم';
+            }, 'total' => function ($p) { return (float)($p['overtime_request_days'] ?? 0); }],
             'bonuses' => ['label' => 'مكافآت', 'cell' => function ($p) { return number_format((float)$p['bonuses'], 0); }, 'total' => function ($p) { return (float)$p['bonuses']; }],
             'tips_addition' => ['label' => 'إضافي تيبس', 'cell' => function ($p) { return number_format((float)($p['tips_addition'] ?? 0), 0); }, 'total' => function ($p) { return (float)($p['tips_addition'] ?? 0); }],
             'work_days_settlement' => ['label' => 'تسوية أيام دوام', 'cell' => function ($p) { return number_format((float)($p['work_days_settlement'] ?? 0), 0); }, 'total' => function ($p) { return (float)($p['work_days_settlement'] ?? 0); }],
@@ -2700,12 +2729,17 @@ class HrController extends Controller
                 return $days . ' يوم' . ($amt > 0 ? ' / ' . number_format($amt, 0) : '');
             }, 'total' => ['days' => function ($p) { return (int)($p['remaining_days'] ?? 0); }, 'amount' => function ($p) { return (float)($p['remaining_value'] ?? 0); }]],
         ];
-        $defaultOrder = ['base','overtime','bonuses','tips_addition','work_days_settlement','working_days','absence','deductions','advances','long_term_advances','insurance','loadings','tips','social_security','housing','remaining'];
+        $defaultOrder = ['base','overtime','overtime_request','bonuses','tips_addition','work_days_settlement','working_days','absence','deductions','advances','long_term_advances','insurance','loadings','tips','social_security','housing','remaining'];
 
         // استخدام الترتيب الممرر من الواجهة إذا كان صالحاً (يحتوي المفاتيح المعروفة فقط)، وإلا يُستخدم الترتيب الافتراضي
         $order = array_values(array_intersect($colOrder, array_keys($colDefs)));
         foreach ($defaultOrder as $key) {
             if (!in_array($key, $order, true)) { $order[] = $key; }
+        }
+        // أعمدة مخفيّة اختيارياً من المستخدم عبر أداة التحكم بإظهار/إخفاء الأعمدة — تُستثنى من التصدير
+        // ليطابق Excel/PDF ما هو معروض فعلياً في الجدول التفاعلي
+        if (!empty($hiddenCols)) {
+            $order = array_values(array_diff($order, $hiddenCols));
         }
 
         $totalNet = 0; $totalStatusCounts = [];
@@ -2981,7 +3015,7 @@ class HrController extends Controller
             return;
         }
         $payroll = Database::query(
-            "SELECT p.*, e.full_name, e.emp_code, e.base_salary AS nominal_base,
+            "SELECT p.*, e.full_name, e.emp_code, e.base_salary AS nominal_base, e.required_hours,
                     e.housing_monthly_deduction AS emp_housing, e.insurance_percentage, e.insurance_occurrences
              FROM payrolls p JOIN employees e ON e.id = p.employee_id WHERE p.id = ?",
             [$id]
@@ -3123,6 +3157,45 @@ class HrController extends Controller
                         'rows' => $body,
                     ],
                     'notes' => ['المبلغ = الساعات × سعر الساعة × المضاعف، وفق المعادلة المعتمدة.'],
+                ];
+
+            case 'overtime_request':
+                $requiredHours = (float)($p['required_hours'] ?? 0) ?: 8.0;
+                $otStatusLabels = ['pending' => 'قيد الانتظار', 'manager_approved' => 'موافقة المدير', 'fully_approved' => 'معتمد نهائياً', 'rejected' => 'مرفوض'];
+                $otRows = Database::query(
+                    "SELECT request_date, hours, reason, status
+                     FROM overtime_requests WHERE employee_id = ? AND DATE_FORMAT(request_date, '%Y-%m') = ?
+                     ORDER BY request_date",
+                    [$employeeId, $period]
+                )->fetchAll();
+                $body = [];
+                $totalHours = 0.0;
+                $totalCount = 0;
+                foreach ($otRows as $r) {
+                    if ($r['status'] !== 'rejected') {
+                        $totalHours += (float)$r['hours'];
+                        $totalCount++;
+                    }
+                    $body[] = [
+                        $r['request_date'],
+                        rtrim(rtrim(number_format((float)$r['hours'], 2), '0'), '.'),
+                        rtrim(rtrim(number_format((float)$r['hours'] / $requiredHours, 2), '0'), '.') . ' يوم',
+                        $otStatusLabels[$r['status']] ?? $r['status'],
+                        (string)($r['reason'] ?? '') !== '' ? (string)$r['reason'] : '—',
+                    ];
+                }
+                return [
+                    'title' => 'طلب العمل الإضافي — ' . $who,
+                    'summary' => [
+                        ['label' => 'عدد الطلبات (باستثناء المرفوضة)', 'value' => (string)$totalCount],
+                        ['label' => 'إجمالي الساعات المطلوبة', 'value' => rtrim(rtrim(number_format($totalHours, 2), '0'), '.') . ' ساعة'],
+                        ['label' => 'المعادل بالأيام (الساعات ÷ ساعات الدوام اليومية)', 'value' => rtrim(rtrim(number_format($totalHours / $requiredHours, 2), '0'), '.') . ' يوم'],
+                    ],
+                    'table' => [
+                        'headers' => ['التاريخ', 'الساعات', 'المعادل بالأيام', 'الحالة', 'السبب'],
+                        'rows' => $body,
+                    ],
+                    'notes' => ['يشمل كل الطلبات المقدّمة خلال هذه الفترة أياً كانت حالتها (قيد الانتظار/معتمدة) باستثناء المرفوضة؛ وهو مختلف عن عمود «الإضافي» الذي يعرض فقط ما طُبّق فعلياً على الراتب بعد اكتمال الموافقة.'],
                 ];
 
             case 'bonuses':

@@ -80,7 +80,13 @@ $exportBase = http_build_query($exportQuery);
 .settlement-table .col-earning { color:#15803d; }
 .settlement-table .col-deduction { color:#b91c1c; }
 .settlement-table .col-net { color:#16a34a; font-weight:700; background:#f0fdf4; }
-@media (max-width:768px) { .payroll-dashboard { grid-template-columns:1fr 1fr; } .payroll-filterbar { flex-direction:column; align-items:stretch; } .payroll-filterbar .form-row { width:100%; } .payroll-filterbar select, .payroll-filterbar input { width:100%; } }
+.pcol-visibility-panel { position:absolute; top:calc(100% + 4px); left:0; z-index:50; background:#fff; border:1px solid #e5e7eb; border-radius:8px; box-shadow:0 8px 20px rgba(0,0,0,0.12); padding:10px; min-width:230px; max-width:280px; max-height:360px; overflow-y:auto; }
+.pcol-visibility-panel .pcol-vis-item { display:flex; align-items:center; gap:8px; padding:5px 4px; font-size:13px; border-radius:4px; }
+.pcol-visibility-panel .pcol-vis-item:hover { background:#f8fafc; }
+.pcol-visibility-panel .pcol-vis-item label { flex:1; cursor:pointer; margin:0; }
+.pcol-visibility-panel .pcol-vis-actions { display:flex; gap:8px; margin-top:8px; padding-top:8px; border-top:1px solid #e5e7eb; }
+.pcol-visibility-panel .pcol-vis-actions button { flex:1; font-size:12px; padding:5px; border:1px solid #d1d5db; border-radius:6px; background:#f8fafc; cursor:pointer; }
+@media (max-width:768px) { .payroll-dashboard { grid-template-columns:1fr 1fr; } .payroll-filterbar { flex-direction:column; align-items:stretch; } .payroll-filterbar .form-row { width:100%; } .payroll-filterbar select, .payroll-filterbar input { width:100%; } .pcol-visibility-panel { left:auto; right:0; min-width:200px; max-width:calc(100vw - 32px); } }
 </style>
 
 <div class="card">
@@ -193,7 +199,11 @@ $exportBase = http_build_query($exportQuery);
       <a href="?<?= $exportBase ?>&format=excel" class="btn btn-sm btn-secondary pj-export-link" data-export-base="?<?= $exportBase ?>&format=excel"><i class="fa-solid fa-file-excel"></i> Excel</a>
       <a href="?<?= $exportBase ?>&format=pdf" class="btn btn-sm btn-secondary pj-export-link" data-export-base="?<?= $exportBase ?>&format=pdf"><i class="fa-solid fa-file-pdf"></i> PDF</a>
       <button type="button" class="btn btn-sm btn-secondary" onclick="window.print()"><i class="fa-solid fa-print"></i> طباعة</button>
-      <button type="button" class="btn btn-sm btn-secondary" id="pcol-reset-btn" title="استعادة ترتيب وعرض الأعمدة الافتراضي"><i class="fa-solid fa-table-columns"></i> إعادة ضبط الأعمدة</button>
+      <button type="button" class="btn btn-sm btn-secondary" id="pcol-reset-btn" title="استعادة ترتيب وعرض وإظهار/إخفاء الأعمدة الافتراضي"><i class="fa-solid fa-table-columns"></i> إعادة ضبط الأعمدة</button>
+      <div class="pcol-visibility-wrap" style="position:relative;display:inline-block">
+        <button type="button" class="btn btn-sm btn-secondary" id="pcol-visibility-btn" title="اختر الأعمدة التي تريد إظهارها أو إخفاءها في كشف الرواتب"><i class="fa-solid fa-eye"></i> إظهار/إخفاء الأعمدة</button>
+        <div id="pcol-visibility-panel" class="pcol-visibility-panel" style="display:none"></div>
+      </div>
     </div>
   </div>
 
@@ -204,7 +214,7 @@ $exportBase = http_build_query($exportQuery);
       <colgroup id="payroll-colgroup">
         <col data-col-key="select">
         <col data-col-key="employee">
-        <col data-col-key="base"><col data-col-key="overtime"><col data-col-key="bonuses"><col data-col-key="tips_addition">
+        <col data-col-key="base"><col data-col-key="overtime"><col data-col-key="overtime_request"><col data-col-key="bonuses"><col data-col-key="tips_addition"><col data-col-key="work_days_settlement">
         <col data-col-key="working_days"><col data-col-key="absence"><col data-col-key="deductions"><col data-col-key="advances"><col data-col-key="long_term_advances"><col data-col-key="insurance"><col data-col-key="loadings"><col data-col-key="tips"><col data-col-key="social_security"><col data-col-key="housing"><col data-col-key="remaining">
         <col data-col-key="net"><col data-col-key="status"><col data-col-key="actions">
       </colgroup>
@@ -214,15 +224,15 @@ $exportBase = http_build_query($exportQuery);
             <input type="checkbox" id="select-all" title="اختيار الكل">
           </th>
           <th rowspan="2" class="sticky-col-2">الموظف</th>
-          <th colspan="4">الاستحقاقات</th>
-          <th colspan="10">الاستقطاعات</th>
-          <th colspan="1">المتبقي</th>
+          <th colspan="6" data-group="earnings">الاستحقاقات</th>
+          <th colspan="10" data-group="deductions">الاستقطاعات</th>
+          <th colspan="1" data-group="remaining">المتبقي</th>
           <th rowspan="2" class="col-net pcol-th" data-col-key="net">صافي<span class="pcol-resizer" data-resize-key="net"></span></th>
           <th rowspan="2" class="pcol-th" data-col-key="status">الحالة<span class="pcol-resizer" data-resize-key="status"></span></th>
           <th rowspan="2" class="pcol-th" data-col-key="actions">إجراءات<span class="pcol-resizer" data-resize-key="actions"></span></th>
         </tr>
         <tr class="sub-header" id="payroll-reorder-row">
-          <th class="pcol-th pcol-draggable" data-col-key="base" draggable="true">الراتب الأساسي<span class="pcol-resizer" data-resize-key="base"></span></th><th class="pcol-th pcol-draggable" data-col-key="overtime" draggable="true">إضافي (أيام/مبلغ)<span class="pcol-resizer" data-resize-key="overtime"></span></th><th class="pcol-th pcol-draggable" data-col-key="bonuses" draggable="true">مكافآت<span class="pcol-resizer" data-resize-key="bonuses"></span></th><th class="pcol-th pcol-draggable" data-col-key="tips_addition" draggable="true">إضافي تيبس<span class="pcol-resizer" data-resize-key="tips_addition"></span></th>
+          <th class="pcol-th pcol-draggable" data-col-key="base" draggable="true">الراتب الأساسي<span class="pcol-resizer" data-resize-key="base"></span></th><th class="pcol-th pcol-draggable" data-col-key="overtime" draggable="true">إضافي (أيام/مبلغ)<span class="pcol-resizer" data-resize-key="overtime"></span></th><th class="pcol-th pcol-draggable" data-col-key="overtime_request" draggable="true" title="إجمالي ساعات طلبات العمل الإضافي المقدّمة هذا الشهر (باستثناء المرفوضة) محوّلة إلى أيام">طلب العمل الإضافي (أيام)<span class="pcol-resizer" data-resize-key="overtime_request"></span></th><th class="pcol-th pcol-draggable" data-col-key="bonuses" draggable="true">مكافآت<span class="pcol-resizer" data-resize-key="bonuses"></span></th><th class="pcol-th pcol-draggable" data-col-key="tips_addition" draggable="true">إضافي تيبس<span class="pcol-resizer" data-resize-key="tips_addition"></span></th><th class="pcol-th pcol-draggable" data-col-key="work_days_settlement" draggable="true">تسوية أيام دوام<span class="pcol-resizer" data-resize-key="work_days_settlement"></span></th>
           <th class="pcol-th pcol-draggable" data-col-key="working_days" draggable="true">أيام الدوام<span class="pcol-resizer" data-resize-key="working_days"></span></th><th class="pcol-th pcol-draggable" data-col-key="absence" draggable="true">خصم الغياب<span class="pcol-resizer" data-resize-key="absence"></span></th><th class="pcol-th pcol-draggable" data-col-key="deductions" draggable="true">خصومات<span class="pcol-resizer" data-resize-key="deductions"></span></th><th class="col-advances pcol-th pcol-draggable" data-col-key="advances" draggable="true">سلف<span class="pcol-resizer" data-resize-key="advances"></span></th><th class="col-advances pcol-th pcol-draggable" data-col-key="long_term_advances" draggable="true">سلف طويلة الأجل<span class="pcol-resizer" data-resize-key="long_term_advances"></span></th><th class="pcol-th pcol-draggable" data-col-key="insurance" draggable="true">التأمينات المستقطعة<span class="pcol-resizer" data-resize-key="insurance"></span></th><th class="pcol-th pcol-draggable" data-col-key="loadings" draggable="true">تحميلات<span class="pcol-resizer" data-resize-key="loadings"></span></th><th class="pcol-th pcol-draggable" data-col-key="tips" draggable="true">تيبس<span class="pcol-resizer" data-resize-key="tips"></span></th><th class="pcol-th pcol-draggable" data-col-key="social_security" draggable="true">ضمان<span class="pcol-resizer" data-resize-key="social_security"></span></th><th class="pcol-th pcol-draggable" data-col-key="housing" draggable="true">سكن<span class="pcol-resizer" data-resize-key="housing"></span></th><th class="pcol-th pcol-draggable" data-col-key="remaining" draggable="true">قيمة المتبقي<span class="pcol-resizer" data-resize-key="remaining"></span></th>
         </tr>
       </thead>
@@ -234,6 +244,7 @@ $exportBase = http_build_query($exportQuery);
         $totalLongTermAdvances = 0;
         $totalWorkingDays = 0; $totalAbsenceDays = 0; $totalOvertimeDays = 0; $totalOvertime = 0;
         $totalRemainingDays = 0; $totalRemainingValue = 0;
+        $totalOvertimeRequestDays = 0.0; $totalWorkDaysSettlement = 0.0;
         foreach ($payrolls as $p):
             $totalNet += (float)$p['net_salary'];
             $totalInsurance += (float)($p['security_deposit'] ?? 0);
@@ -245,6 +256,7 @@ $exportBase = http_build_query($exportQuery);
             $totalTipsAddition += (float)($p['tips_addition'] ?? 0); $totalHousingDeduction += (float)($p['housing_deduction'] ?? 0);
             $totalLongTermAdvances += (float)($p['long_term_advances'] ?? 0);
             $totalRemainingDays += (int)($p['remaining_days'] ?? 0); $totalRemainingValue += (float)($p['remaining_value'] ?? 0);
+            $totalOvertimeRequestDays += (float)($p['overtime_request_days'] ?? 0); $totalWorkDaysSettlement += (float)($p['work_days_settlement'] ?? 0);
         ?>
         <tr>
           <td class="sticky-col-1" data-col-key="select">
@@ -275,8 +287,14 @@ $exportBase = http_build_query($exportQuery);
               <?php if ((float)($p['overtime'] ?? 0) > 0): ?><br><small>+<?= Helpers::money($p['overtime']) ?></small><?php endif; ?>
             </a>
           </td>
+          <td data-col-key="overtime_request" title="إجمالي ساعات طلبات العمل الإضافي المقدّمة هذا الشهر (باستثناء المرفوضة) محوّلة إلى أيام، مختلف عن «الإضافي» المطبّق فعلياً — اضغط للتفاصيل">
+            <a href="javascript:void(0)" class="pj-link" data-pid="<?= (int)$p['id'] ?>" data-item="overtime_request">
+              <?= rtrim(rtrim(number_format((float)($p['overtime_request_days'] ?? 0), 2), '0'), '.') ?: '0' ?> يوم
+            </a>
+          </td>
           <td class="col-earning" data-col-key="bonuses"><a href="javascript:void(0)" class="pj-link" data-pid="<?= (int)$p['id'] ?>" data-item="bonuses" title="اضغط لعرض تفاصيل المكافآت">+<?= Helpers::money($p['bonuses']) ?></a></td>
           <td class="col-earning" data-col-key="tips_addition"><a href="javascript:void(0)" class="pj-link" data-pid="<?= (int)$p['id'] ?>" data-item="tips_addition" title="اضغط لعرض تفاصيل إضافي تيبس">+<?= Helpers::money($p['tips_addition'] ?? 0) ?></a></td>
+          <td class="col-earning" data-col-key="work_days_settlement"><a href="javascript:void(0)" class="pj-link" data-pid="<?= (int)$p['id'] ?>" data-item="work_days_settlement" title="اضغط لعرض تفاصيل تسوية أيام الدوام">+<?= Helpers::money($p['work_days_settlement'] ?? 0) ?></a></td>
           <td data-col-key="working_days" title="أيام الدوام الفعلية من بيانات البصمة · متوقع <?= (int)($p['expected_days'] ?? 0) ?> · إجازات <?= (int)($p['leave_days'] ?? 0) ?> · بدون راتب <?= (int)($p['unpaid_leave_days'] ?? 0) ?> — اضغط للتفاصيل">
             <a href="javascript:void(0)" class="pj-link" data-pid="<?= (int)$p['id'] ?>" data-item="working_days"><?= (int)($p['working_days'] ?? 0) ?></a>
           </td>
@@ -341,8 +359,10 @@ $exportBase = http_build_query($exportQuery);
           <td class="sticky-col-2" data-col-key="employee">الإجمالي</td>
           <td data-col-key="base"></td>
           <td data-col-key="overtime"><?= $totalOvertimeDays ?> يوم<?php if ($totalOvertime > 0): ?><br><small class="col-earning"><?= Helpers::money($totalOvertime) ?></small><?php endif; ?></td>
+          <td data-col-key="overtime_request"><?= rtrim(rtrim(number_format($totalOvertimeRequestDays, 2), '0'), '.') ?: '0' ?> يوم</td>
           <td data-col-key="bonuses"></td>
           <td data-col-key="tips_addition"></td>
+          <td class="col-earning" data-col-key="work_days_settlement"><?= Helpers::money($totalWorkDaysSettlement) ?></td>
           <td data-col-key="working_days"><?= $totalWorkingDays ?></td>
           <td class="col-deduction" data-col-key="absence"><?= $totalAbsenceDays ?> يوم<?php if ($totalAbsence > 0): ?><br><small><?= Helpers::money($totalAbsence) ?></small><?php endif; ?></td>
           <td data-col-key="deductions"></td>
@@ -359,7 +379,7 @@ $exportBase = http_build_query($exportQuery);
           <td data-col-key="actions"></td>
         </tr>
         <?php else: ?>
-        <tr><td colspan="20">لم تولَّد رواتب لهذه الفترة بعد</td></tr>
+        <tr><td colspan="22">لم تولَّد رواتب لهذه الفترة بعد</td></tr>
         <?php endif; ?>
       </tbody>
     </table>
@@ -589,23 +609,43 @@ document.addEventListener('DOMContentLoaded', function() {
     pjWireExportLinks();
 });
 
-/* إلحاق ترتيب الأعمدة الحالي (المحفوظ في localStorage) برابط التصدير ليطابق Excel/PDF الجدول المعروض */
+/* إلحاق ترتيب الأعمدة الحالي والأعمدة المخفيّة (المحفوظين في localStorage) برابط التصدير ليطابق Excel/PDF الجدول المعروض */
 function pjWireExportLinks() {
     var links = document.querySelectorAll('.pj-export-link');
     if (!links.length) return;
     var prefs = pjLoadColumnPrefs();
     var order = (prefs && prefs.order && prefs.order.length) ? prefs.order : PJ_REORDERABLE_KEYS;
-    var colsParam = 'cols=' + encodeURIComponent(order.join(','));
+    var hidden = (prefs && prefs.hidden) ? prefs.hidden : [];
+    var colsParam = 'cols=' + encodeURIComponent(order.join(',')) + '&hidden=' + encodeURIComponent(hidden.join(','));
     links.forEach(function(a) {
         var base = a.getAttribute('data-export-base');
         a.setAttribute('href', base + '&' + colsParam);
     });
 }
 
-/* إعادة ترتيب أعمدة كشف الرواتب بالسحب والإفلات، وتغيير عرض الأعمدة (محفوظة لكل متصفح في localStorage) */
+/* إعادة ترتيب أعمدة كشف الرواتب بالسحب والإفلات، وتغيير عرض/إظهار الأعمدة (محفوظة لكل متصفح في localStorage) */
 var PJ_COL_STORAGE_KEY = 'payrollTableColumnsV1';
 /* الأعمدة القابلة لإعادة الترتيب (التفاصيل فقط، بدون التحديد/الموظف/الصافي/الحالة/الإجراءات) */
-var PJ_REORDERABLE_KEYS = ['base','overtime','bonuses','tips_addition','working_days','absence','deductions','advances','long_term_advances','insurance','loadings','tips','social_security','housing','remaining'];
+var PJ_REORDERABLE_KEYS = ['base','overtime','overtime_request','bonuses','tips_addition','work_days_settlement','working_days','absence','deductions','advances','long_term_advances','insurance','loadings','tips','social_security','housing','remaining'];
+/* كل الأعمدة التي يمكن إظهارها/إخفاؤها من لوحة التحكم — التفاصيل + الصافي/الحالة/الإجراءات
+(عمودا التحديد والموظف مستثنيان عمداً لأنهما ضروريان للتحديد والتعرّف على الموظف) */
+var PJ_TOGGLEABLE_KEYS = PJ_REORDERABLE_KEYS.concat(['net', 'status', 'actions']);
+var PJ_COLUMN_LABELS = {
+    base: 'الراتب الأساسي', overtime: 'إضافي (أيام/مبلغ)', overtime_request: 'طلب العمل الإضافي (أيام)',
+    bonuses: 'مكافآت', tips_addition: 'إضافي تيبس', work_days_settlement: 'تسوية أيام دوام',
+    working_days: 'أيام الدوام', absence: 'خصم الغياب', deductions: 'خصومات', advances: 'سلف',
+    long_term_advances: 'سلف طويلة الأجل', insurance: 'التأمينات المستقطعة', loadings: 'تحميلات',
+    tips: 'تيبس', social_security: 'ضمان', housing: 'سكن', remaining: 'قيمة المتبقي',
+    net: 'صافي', status: 'الحالة', actions: 'إجراءات'
+};
+/* تصنيف الأعمدة التفاصيلية تحت رؤوس المجموعات الثلاث (الاستحقاقات/الاستقطاعات/المتبقي) — يُستخدم لإعادة
+حساب colspan رأس المجموعة حسب عدد الأعمدة الظاهرة فعلياً ضمنها (مبني على الترتيب الافتراضي؛ إعادة الترتيب
+بالسحب والإفلات لا تغيّر هذا التجميع بنفس الطريقة المتّبعة مسبقاً لعناوين المجموعات قبل هذه الميزة) */
+var PJ_GROUP_MAP = {
+    earnings: ['base', 'overtime', 'overtime_request', 'bonuses', 'tips_addition', 'work_days_settlement'],
+    deductions: ['working_days', 'absence', 'deductions', 'advances', 'long_term_advances', 'insurance', 'loadings', 'tips', 'social_security', 'housing'],
+    remaining: ['remaining']
+};
 function pjLoadColumnPrefs() {
     try {
         var raw = localStorage.getItem(PJ_COL_STORAGE_KEY);
@@ -713,6 +753,90 @@ function initPayrollTableColumns() {
             location.reload();
         });
     }
+
+    pjInitColumnVisibility(table, prefs);
+}
+/* أداة التحكم بإظهار/إخفاء الأعمدة (Column Visibility Control): قائمة بكافة أسماء أعمدة كشف الرواتب مع مربع اختيار،
+تُظهر/تُخفي العمود فوراً عند التبديل، وتُحفظ الحالة في localStorage (ضمن نفس مفتاح PJ_COL_STORAGE_KEY المستخدم للترتيب/العرض) */
+function pjInitColumnVisibility(table, prefs) {
+    var btn = document.getElementById('pcol-visibility-btn');
+    var panel = document.getElementById('pcol-visibility-panel');
+    if (!btn || !panel) return;
+    var hidden = (prefs.hidden || []).slice();
+
+    function persist() {
+        var p = pjLoadColumnPrefs() || {order: null, widths: {}};
+        p.hidden = hidden;
+        pjSaveColumnPrefs(p);
+        pjWireExportLinks();
+    }
+    function renderPanel() {
+        panel.innerHTML = '';
+        PJ_TOGGLEABLE_KEYS.forEach(function(key) {
+            var item = document.createElement('div');
+            item.className = 'pcol-vis-item';
+            var cbId = 'pcol-vis-' + key;
+            var cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.id = cbId;
+            cb.checked = hidden.indexOf(key) === -1;
+            var label = document.createElement('label');
+            label.setAttribute('for', cbId);
+            label.textContent = PJ_COLUMN_LABELS[key] || key;
+            item.appendChild(cb);
+            item.appendChild(label);
+            panel.appendChild(item);
+            cb.addEventListener('change', function() {
+                if (cb.checked) {
+                    hidden = hidden.filter(function(k) { return k !== key; });
+                } else if (hidden.indexOf(key) === -1) {
+                    hidden.push(key);
+                }
+                pjApplyColumnVisibility(table, hidden);
+                persist();
+            });
+        });
+        var actions = document.createElement('div');
+        actions.className = 'pcol-vis-actions';
+        var showAllBtn = document.createElement('button');
+        showAllBtn.type = 'button';
+        showAllBtn.textContent = 'إظهار الكل';
+        showAllBtn.addEventListener('click', function() {
+            hidden = [];
+            pjApplyColumnVisibility(table, hidden);
+            persist();
+            renderPanel();
+        });
+        actions.appendChild(showAllBtn);
+        panel.appendChild(actions);
+    }
+    renderPanel();
+    btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        panel.style.display = (panel.style.display === 'none' || !panel.style.display) ? 'block' : 'none';
+    });
+    document.addEventListener('click', function(e) {
+        if (panel.style.display === 'block' && !panel.contains(e.target) && e.target !== btn) {
+            panel.style.display = 'none';
+        }
+    });
+    pjApplyColumnVisibility(table, hidden);
+}
+/* تطبيق الإظهار/الإخفاء فعلياً على الجدول (الرأس، الجسم، صف الإجمالي، والأعمدة النفسها في colgroup) مع إعادة حساب colspan رؤوس المجموعات الثلاث */
+function pjApplyColumnVisibility(table, hiddenKeys) {
+    PJ_TOGGLEABLE_KEYS.forEach(function(key) {
+        var isHidden = hiddenKeys.indexOf(key) !== -1;
+        table.querySelectorAll('[data-col-key="' + key + '"]').forEach(function(el) {
+            el.style.display = isHidden ? 'none' : '';
+        });
+    });
+    Object.keys(PJ_GROUP_MAP).forEach(function(group) {
+        var th = table.querySelector('th[data-group="' + group + '"]');
+        if (!th) return;
+        var visibleCount = PJ_GROUP_MAP[group].filter(function(k) { return hiddenKeys.indexOf(k) === -1; }).length;
+        th.style.display = visibleCount === 0 ? 'none' : '';
+        th.setAttribute('colspan', Math.max(1, visibleCount));
+    });
 }
 function pjSwapColumns(table, keyA, keyB) {
     /* بناء الترتيب الحالي للأعمدة القابلة للسحب من صف الرأس، ثم تبديل موضعي keyA/keyB في المصفوفة فقط */
