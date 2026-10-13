@@ -1,7 +1,42 @@
 <?php use App\Core\Helpers; ?>
+<?php use App\Core\ImportHelper; ?>
+<?php $period = $period ?? date('Y-m'); ?>
+<?php $importErrors = ImportHelper::getErrors(); ?>
+<?php if ($importErrors): ?>
+<div class="alert alert-danger">
+  <strong>أخطاء الاستيراد:</strong>
+  <ul><?php foreach ($importErrors as $err): ?><li><?= Helpers::e($err) ?></li><?php endforeach; ?></ul>
+</div>
+<?php endif; ?>
 <div class="card">
   <h3>استيراد بيانات الرواتب التاريخية</h3>
   <p>استورد بيانات التيبس، الضمان الاجتماعي، التحميلات، تذاكر السفر، السلف، الزيادات، المكافآت، الخصومات، إضافي التيبس، تسوية أيام الدوام، والبدلات جميعها في ملف Excel/CSV واحد. كل صف يحدد نوعه بعمود <strong>type</strong>.</p>
+</div>
+
+<div class="card" style="margin-top:15px">
+  <h4>استيراد سريع لفترة محددة (أيام دوام + استقطاعات + استحقاقات)</h4>
+  <p>قالب معبأ مسبقاً بقائمة الموظفين النشطين (رمز/اسم) لإدخال <strong>تسوية أيام الدوام، استقطاعات (أيام أو مبلغ)، واستحقاقات/مكافآت</strong> لجميع الموظفين دفعة واحدة لفترة محددة، دون الحاجة لتكرار الفترة أو نوع السجل في كل صف.</p>
+  <form method="get" action="/hr/payroll/import-period-template" class="form-inline" style="margin-bottom:15px">
+    <div class="form-row"><label>الفترة</label><input type="month" name="period" value="<?= Helpers::e($period) ?>" required></div>
+    <button class="btn btn-outline">تحميل قالب الفترة</button>
+  </form>
+
+  <hr style="margin:15px 0">
+
+  <form method="post" action="/hr/payroll/import-period" enctype="multipart/form-data" class="form-inline">
+    <div class="form-row"><label>الفترة</label><input type="month" name="period" value="<?= Helpers::e($period) ?>" required></div>
+    <div class="form-row"><label>ملف Excel أو CSV</label><input type="file" name="import_file" accept=".xlsx,.xls,.csv" required></div>
+    <button class="btn btn-primary">استيراد تسويات الفترة</button>
+  </form>
+
+  <ul style="margin-top:15px">
+    <li><strong>رمز الموظف:</strong> مطلوب لمطابقة الصف بالموظف. اسم الموظف للمراجعة فقط.</li>
+    <li><strong>أيام استحقاق/تسوية دوام إضافية:</strong> تُضاف كاستحقاق أيام (تسوية أيام دوام) بنفس معدل اليومية المعتمد في باقي النظام (الأساس المعدّل/30 × عدد الأيام).</li>
+    <li><strong>أيام الاستقطاع/الغياب أو مبلغ الاستقطاع:</strong> يمكن إدخال أحدهما فقط (إذا أدخل المبلغ مباشرة يُعتمد، وإلا يُحسب تلقائياً من عدد الأيام).</li>
+    <li><strong>مبلغ الاستحقاق/المكافأة:</strong> يُضاف كمكافأة/استحقاق مبلغ مقطوع.</li>
+    <li>أعمدة السبب اختيارية للتوثيق فقط. الصفوف الفارغة (بدون أي قيمة) تُتجاهل بصمت.</li>
+    <li>تُستورد التسويات بحالة <strong>معتمدة</strong> مباشرة (بنفس آلية الاستيراد الموحد أعلاه) وتُحتسب تلقائياً ضمن استحقاقات/استقطاعات الفترة عند توليد أو إعادة توليد راتبها من صفحة كشف الرواتب مباشرة.</li>
+  </ul>
 </div>
 
 <div class="card" style="margin-top:15px">

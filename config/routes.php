@@ -510,6 +510,8 @@ $router->get('/hr/payroll/import-template', [HrController::class, 'payrollImport
 $router->post('/hr/payroll/import-all', [HrController::class, 'importPayrollUnified'], ['auth', 'perm:payroll.manage']);
 $router->get('/hr/payroll/import-historical-template', [HrController::class, 'payrollImportHistoricalTemplate'], ['auth', 'perm:payroll.manage']);
 $router->post('/hr/payroll/import-historical', [HrController::class, 'importPayrollHistorical'], ['auth', 'perm:payroll.manage']);
+$router->get('/hr/payroll/import-period-template', [HrController::class, 'payrollPeriodImportTemplate'], ['auth', 'perm:payroll.manage']);
+$router->post('/hr/payroll/import-period', [HrController::class, 'importPayrollPeriodBulk'], ['auth', 'perm:payroll.manage']);
 $router->get('/hr/payroll/{id}/item-details', [HrController::class, 'payrollItemDetails'], ['auth', 'perm:payroll.manage']);
 $router->get('/hr/headcount', [HrController::class, 'headcount'], ['auth', 'perm:payroll.manage']);
 $router->post('/hr/headcount', [HrController::class, 'saveHeadcount'], ['auth', 'perm:payroll.manage']);

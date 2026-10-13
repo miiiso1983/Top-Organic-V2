@@ -133,7 +133,7 @@ $exportBase = http_build_query($exportQuery);
     <a href="/hr/payroll/tax-brackets" class="btn btn-sm btn-secondary"><i class="fa-solid fa-bars"></i> شرائح الضريبة</a>
     <a href="/hr/payroll/messages?period=<?= urlencode($period) ?>" class="btn btn-sm btn-secondary"><i class="fa-solid fa-comment-sms"></i> رسائل</a>
     <a href="/hr/headcount?period=<?= urlencode($period) ?>" class="btn btn-sm btn-secondary"><i class="fa-solid fa-users-gear"></i> الأعداد</a>
-    <a href="/hr/payroll/import" class="btn btn-sm btn-secondary"><i class="fa-solid fa-file-import"></i> استيراد</a>
+    <a href="/hr/payroll/import?period=<?= urlencode($period) ?>" class="btn btn-sm btn-secondary"><i class="fa-solid fa-file-import"></i> استيراد</a>
   </div>
   <form method="post" action="/hr/payroll/absence-mode" class="form-inline" style="margin-top:10px">
     <input type="hidden" name="period" value="<?= Helpers::e($period) ?>">

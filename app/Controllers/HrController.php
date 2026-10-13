@@ -3460,9 +3460,14 @@ class HrController extends Controller
             'travel_tickets' => 'تذاكر السفر',
             'advances' => 'السلف',
         ];
+        $period = (string)($_GET['period'] ?? date('Y-m'));
+        if (!preg_match('/^\d{4}-\d{2}$/', $period)) {
+            $period = date('Y-m');
+        }
         $this->view('hr/payroll_import', [
             'title' => 'استيراد بيانات الرواتب',
             'components' => $components,
+            'period' => $period,
         ]);
     }
 
@@ -3817,6 +3822,199 @@ class HrController extends Controller
         }
     }
 
+    /** ==================== استيراد سريع لفترة محددة: أيام دوام + استقطاعات + استحقاقات دفعة واحدة ==================== */
+
+    /**
+     * قالب Excel لإدخال تسوية أيام الدوام والاستقطاعات والاستحقاقات لجميع موظفي فترة محددة دفعة واحدة.
+     * يُعبّأ تلقائياً بقائمة الموظفين النشطين (مع إمكانية التصفية بالقسم/الفرع كما في كشف الرواتب)
+     * بحيث يكتفي المستخدم بتعبئة أعمدة القيم فقط.
+     */
+    public function payrollPeriodImportTemplate(): void
+    {
+        if (!Auth::can('payroll.manage')) {
+            $this->flash('danger', 'ليس لديك صلاحية');
+            Response::redirect('/hr/payroll');
+        }
+        $period = (string)($_GET['period'] ?? date('Y-m'));
+        if (!preg_match('/^\d{4}-\d{2}$/', $period)) {
+            $period = date('Y-m');
+        }
+        $department = (string)($_GET['department'] ?? '');
+        $branchId = (int)($_GET['branch_id'] ?? 0);
+
+        $where = ["file_status = 'open'", "status = 'active'"];
+        $params = [];
+        if ($department !== '') {
+            $where[] = 'department = ?';
+            $params[] = $department;
+        }
+        if ($branchId > 0) {
+            $where[] = 'branch_id = ?';
+            $params[] = $branchId;
+        }
+        $employees = Database::query(
+            "SELECT emp_code, full_name FROM employees WHERE " . implode(' AND ', $where) . " ORDER BY full_name",
+            $params
+        )->fetchAll();
+
+        $headers = [
+            'رمز الموظف', 'اسم الموظف',
+            'أيام استحقاق/تسوية دوام إضافية', 'سبب تسوية الأيام',
+            'أيام الاستقطاع/الغياب', 'مبلغ الاستقطاع', 'سبب الاستقطاع',
+            'مبلغ الاستحقاق/المكافأة', 'سبب الاستحقاق',
+        ];
+        $rows = [];
+        foreach ($employees as $e) {
+            $rows[] = [$e['emp_code'], $e['full_name'], '', '', '', '', '', '', ''];
+        }
+        if (!$rows) {
+            $rows[] = ['EMP001', 'اسم الموظف', 2, 'تسوية بصمة', 1, '', 'خصم غياب يوم', 50000, 'مكافأة أداء'];
+        }
+        ImportHelper::downloadTemplateMulti($headers, 'payroll_period_import_' . $period . '.xlsx', $rows);
+    }
+
+    /**
+     * استيراد تسوية أيام الدوام والاستقطاعات والاستحقاقات لفترة محددة دفعة واحدة من ملف Excel/CSV.
+     * يُطبّق كل صف عبر applyPayrollRow() بنفس منطق التسويات المعتمد تماماً (hr_adjustments بحالة معتمدة)
+     * دون أي تعديل على منطق احتساب الراتب في HrService::calculatePayrollComponents/generatePayroll —
+     * البنود المستوردة تُجمع تلقائياً ضمن الاستحقاقات/الاستقطاعات عند توليد/إعادة توليد راتب الفترة كما هو معتمد حالياً.
+     */
+    public function importPayrollPeriodBulk(): void
+    {
+        if (!Auth::can('payroll.manage')) {
+            $this->flash('danger', 'ليس لديك صلاحية');
+            Response::redirect('/hr/payroll');
+        }
+        $period = trim((string)$this->input('period'));
+        if (!preg_match('/^\d{4}-\d{2}$/', $period)) {
+            $this->flash('danger', 'فترة غير صالحة (يجب أن تكون بالشكل YYYY-MM)');
+            Response::redirect('/hr/payroll/import');
+        }
+        if (empty($_FILES['import_file']['tmp_name']) || $_FILES['import_file']['error'] !== UPLOAD_ERR_OK) {
+            $this->flash('danger', 'لم يتم اختيار ملف');
+            Response::redirect('/hr/payroll/import?period=' . urlencode($period));
+        }
+        $read = ImportHelper::readFile($_FILES['import_file']['tmp_name']);
+        if ($read['errors']) {
+            ImportHelper::flashErrors($read['errors']);
+            $this->flash('danger', 'خطأ في قراءة الملف');
+            Response::redirect('/hr/payroll/import?period=' . urlencode($period));
+        }
+
+        // توحيد الأعمدة العربية إلى مفاتيح داخلية (مع دعم الأسماء الإنجليزية emp_code كبديل)
+        $colMap = [
+            'رمز الموظف' => 'emp_code',
+            'اسم الموظف' => 'emp_name',
+            'أيام استحقاق/تسوية دوام إضافية' => 'settlement_days',
+            'سبب تسوية الأيام' => 'settlement_reason',
+            'أيام الاستقطاع/الغياب' => 'deduction_days',
+            'مبلغ الاستقطاع' => 'deduction_amount',
+            'سبب الاستقطاع' => 'deduction_reason',
+            'مبلغ الاستحقاق/المكافأة' => 'earning_amount',
+            'سبب الاستحقاق' => 'earning_reason',
+        ];
+        $rows = $read['rows'];
+        foreach ($rows as &$row) {
+            foreach ($row as $colName => $colValue) {
+                $key = $colMap[trim((string)$colName)] ?? null;
+                if ($key && (!isset($row[$key]) || $row[$key] === '' || $row[$key] === null)) {
+                    $row[$key] = $colValue;
+                }
+            }
+        }
+        unset($row);
+        $rows = array_values(array_filter($rows, function ($row) {
+            return trim((string)($row['emp_code'] ?? '')) !== '';
+        }));
+        if (!$rows) {
+            $this->flash('danger', 'الملف لا يحتوي على بيانات (يجب تعبئة عمود رمز الموظف)');
+            Response::redirect('/hr/payroll/import?period=' . urlencode($period));
+        }
+
+        $empCodes = [];
+        foreach ($rows as $row) {
+            $code = trim((string)($row['emp_code'] ?? ''));
+            if ($code) { $empCodes[] = $code; }
+        }
+        $empMap = [];
+        if ($empCodes) {
+            $in = implode(',', array_fill(0, count($empCodes), '?'));
+            $emps = Database::query("SELECT id, emp_code FROM employees WHERE emp_code IN ($in)", $empCodes)->fetchAll();
+            $empMap = array_column($emps, 'id', 'emp_code');
+        }
+        $errors = [];
+        foreach ($rows as $idx => $row) {
+            $code = trim((string)($row['emp_code'] ?? ''));
+            if (!isset($empMap[$code])) {
+                $errors[] = 'الصف ' . ($idx + 2) . ': كود الموظف ' . $code . ' غير موجود';
+                continue;
+            }
+            $hasValue = (is_numeric($row['settlement_days'] ?? null) && (float)$row['settlement_days'] > 0)
+                || (is_numeric($row['deduction_days'] ?? null) && (float)$row['deduction_days'] > 0)
+                || (is_numeric($row['deduction_amount'] ?? null) && (float)$row['deduction_amount'] > 0)
+                || (is_numeric($row['earning_amount'] ?? null) && (float)$row['earning_amount'] > 0);
+            if (!$hasValue) {
+                continue; // صف يحمل فقط رمز/اسم الموظف دون أي قيمة — يُتجاهل بصمت
+            }
+            if (!HrService::isEmployeeFileOpen((int)$empMap[$code])) {
+                $errors[] = 'الصف ' . ($idx + 2) . ': ملف الموظف ' . $code . ' مغلق أو مؤرشف، لا يمكن إضافة تسوية';
+            }
+        }
+        if ($errors) {
+            ImportHelper::flashErrors($errors);
+            $this->flash('danger', 'يوجد ' . count($errors) . ' خطأ في الملف');
+            Response::redirect('/hr/payroll/import?period=' . urlencode($period));
+        }
+
+        $userId = Auth::id();
+        $settlementCount = 0; $deductionCount = 0; $earningCount = 0; $employeesTouched = [];
+        Database::beginTransaction();
+        try {
+            foreach ($rows as $row) {
+                $code = trim((string)($row['emp_code'] ?? ''));
+                if (!isset($empMap[$code])) { continue; }
+                $employeeId = (int)$empMap[$code];
+
+                $settlementDays = is_numeric($row['settlement_days'] ?? null) ? (float)$row['settlement_days'] : 0.0;
+                if ($settlementDays > 0) {
+                    $this->applyPayrollRow([
+                        'period' => $period, 'days' => $settlementDays,
+                        'reason' => (string)($row['settlement_reason'] ?? '') ?: 'تسوية أيام دوام - استيراد جماعي',
+                    ], 'work_days_settlement', $employeeId, $userId);
+                    $settlementCount++;
+                    $employeesTouched[$employeeId] = true;
+                }
+
+                $deductionDays = is_numeric($row['deduction_days'] ?? null) ? (float)$row['deduction_days'] : 0.0;
+                $deductionAmount = is_numeric($row['deduction_amount'] ?? null) ? (float)$row['deduction_amount'] : 0.0;
+                if ($deductionDays > 0 || $deductionAmount > 0) {
+                    $this->applyPayrollRow([
+                        'period' => $period, 'days' => $deductionDays, 'amount' => $deductionAmount,
+                        'reason' => (string)($row['deduction_reason'] ?? '') ?: 'استقطاع - استيراد جماعي',
+                    ], 'deduction', $employeeId, $userId);
+                    $deductionCount++;
+                    $employeesTouched[$employeeId] = true;
+                }
+
+                $earningAmount = is_numeric($row['earning_amount'] ?? null) ? (float)$row['earning_amount'] : 0.0;
+                if ($earningAmount > 0) {
+                    $this->applyPayrollRow([
+                        'period' => $period, 'amount' => $earningAmount,
+                        'reason' => (string)($row['earning_reason'] ?? '') ?: 'استحقاق - استيراد جماعي',
+                    ], 'bonus', $employeeId, $userId);
+                    $earningCount++;
+                    $employeesTouched[$employeeId] = true;
+                }
+            }
+            Database::commit();
+            Helpers::audit('استيراد تسويات رواتب لفترة', 'payroll_import', 0, "period:{$period} employees:" . count($employeesTouched) . " settlements:{$settlementCount} deductions:{$deductionCount} earnings:{$earningCount}");
+            $this->flash('success', "تم الاستيراد لفترة {$period}: " . count($employeesTouched) . " موظف ({$settlementCount} تسوية أيام، {$deductionCount} استقطاع، {$earningCount} استحقاق). يجب توليد/إعادة توليد راتب الفترة ليتم احتساب القيم الجديدة.");
+        } catch (\Throwable $e) {
+            Database::rollBack();
+            $this->flash('danger', 'خطأ أثناء الاستيراد: ' . $e->getMessage());
+        }
+        Response::redirect('/hr/payroll/import?period=' . urlencode($period));
+    }
 
     /** ==================== استيراد رواتب تاريخية كاملة لفترات سابقة ==================== */
 
