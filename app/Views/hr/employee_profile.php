@@ -106,7 +106,7 @@ $warningType = ['verbal'=>'شفهي','written'=>'خطي','final'=>'نهائي'];
     <div class="info-item"><span class="info-label">المدير المباشر</span><span class="info-value"><?= Helpers::e($employee['manager_name'] ?? '-') ?></span></div>
     <div class="info-item"><span class="info-label">الفرع</span><span class="info-value"><?= Helpers::e($employee['branch_name'] ?? '-') ?></span></div>
     <?php if ($canViewSalary): ?>
-    <div class="info-item"><span class="info-label">الراتب الأساسي</span><span class="info-value"><?= Helpers::money($employee['base_salary'] ?? $employee['salary'] ?? 0) ?></span></div>
+    <div class="info-item"><span class="info-label">الراتب الأساسي</span><span class="info-value"><?= Helpers::money($adjustedSalary ?? $employee['base_salary'] ?? $employee['salary'] ?? 0) ?></span></div>
     <?php $housingTypeLabels = ['external'=>'سكن خارجي','yarmouk'=>'سكن اليرموك','sebti'=>'سكن سبتي','qadisiya'=>'سكن القادسية','internal'=>'سكن الداخلي']; ?>
     <div class="info-item"><span class="info-label">نوع السكن</span><span class="info-value"><?= $housingTypeLabels[$employee['housing_type'] ?? ''] ?? '-' ?></span></div>
     <div class="info-item"><span class="info-label">استقطاع خدمات السكن الشهري</span><span class="info-value"><?= Helpers::money($employee['housing_monthly_deduction'] ?? 0) ?></span></div>
@@ -133,7 +133,7 @@ $warningType = ['verbal'=>'شفهي','written'=>'خطي','final'=>'نهائي'];
   <h5 style="margin-top:16px">تفاصيل حساب الاستحقاق</h5>
   <table>
     <tr><th>البند</th><th>المبلغ</th></tr>
-    <tr><td>الراتب</td><td><?= Helpers::money($breakdown['salary_amount'] ?? 0) ?></td></tr>
+    <tr><td>الراتب</td><td><?= Helpers::money($settlementSalary ?? ($breakdown['salary_amount'] ?? 0)) ?></td></tr>
     <tr><td>استقطاع الغياب (<?= Helpers::e($breakdown['absence_days'] ?? 0) ?> يوم)</td><td><?= Helpers::money($breakdown['absence_deduction'] ?? 0) ?></td></tr>
     <tr><td>مبلغ الإضافي</td><td><?= Helpers::money($breakdown['overtime_amount'] ?? 0) ?></td></tr>
     <tr><td>السلف</td><td><?= Helpers::money($breakdown['advances_amount'] ?? 0) ?></td></tr>

@@ -65,9 +65,20 @@ class HrController extends Controller
             'branch_name' => 'b.name', 'username' => 'u.username',
         ];
         $orderColumn = $orderMap[$sortBy] ?? 'e.full_name';
+        // الراتب المعروض هنا يجب أن يطابق صفحة الرواتب (الأساسي + زيادات الفترة − تخفيض الفترة)
+        // — نفس معادلة HrService::adjustedMonthlyBase لكن محسوبة داخل الاستعلام دفعة واحدة
+        $salaryPeriod = date('Y-m');
+        $salaryPeriodStart = $salaryPeriod . '-01';
+        $salaryPeriodEnd = date('Y-m-t', strtotime($salaryPeriodStart));
+        $adjustedSalarySql = "GREATEST(0, e.base_salary
+                    + COALESCE((SELECT SUM(ha.amount) FROM hr_adjustments ha WHERE ha.employee_id = e.id AND ha.adjustment_type = 'raise' AND ha.status = 'approved' AND (ha.period = ? OR (ha.period IS NULL AND ha.effective_date BETWEEN ? AND ?))), 0)
+                    + COALESCE((SELECT SUM(sa.amount) FROM salary_adjustments sa WHERE sa.employee_id = e.id AND sa.adj_type = 'raise' AND sa.status = 'approved' AND sa.adj_date BETWEEN ? AND ?), 0)
+                    - COALESCE((SELECT SUM(hs.amount) FROM hr_adjustments hs WHERE hs.employee_id = e.id AND hs.adjustment_type = 'salary_reduction' AND hs.status = 'approved' AND (hs.period = ? OR (hs.period IS NULL AND hs.effective_date BETWEEN ? AND ?))), 0)
+                )";
         $employees = Database::query(
             "SELECT e.*, b.name AS branch_name, u.username AS username,
-                    d.name AS department_name, j.title AS job_title, m.full_name AS manager_name
+                    d.name AS department_name, j.title AS job_title, m.full_name AS manager_name,
+                    $adjustedSalarySql AS adjusted_salary
              FROM employees e
              LEFT JOIN branches b ON b.id = e.branch_id
              LEFT JOIN users u ON u.id = e.user_id
@@ -77,13 +88,17 @@ class HrController extends Controller
              $whereSql
              ORDER BY $orderColumn $sortDir
              LIMIT 1000",
-            $params
+            array_merge(
+                [$salaryPeriod, $salaryPeriodStart, $salaryPeriodEnd, $salaryPeriodStart, $salaryPeriodEnd, $salaryPeriod, $salaryPeriodStart, $salaryPeriodEnd],
+                $params
+            )
         )->fetchAll();
 
         $canViewSalary = Auth::can('hr.employee.salary.view');
         if (!$canViewSalary) {
             foreach ($employees as &$e) {
                 $e['base_salary'] = null;
+                $e['adjusted_salary'] = null;
             }
             unset($e);
         }
@@ -344,12 +359,14 @@ class HrController extends Controller
             [(int)$id]
         )->fetch();
         $workedDays = HrService::getEmployeeWorkedDaysInMonth((int)$id, (int)date('Y'), (int)date('m'));
+        // المخالصة تُحتسب على الأساس المعدّل (الأساسي + الزيادات − التخفيض) المطابق لصفحة الرواتب، لا الاسمي الخام
+        $adjustedBase = HrService::adjustedMonthlyBase((int)$id, date('Y-m'));
         try {
-            $breakdown = $this->calculateResignationBreakdown((int)$id, (float)$employee['base_salary'], (float)$workedDays);
+            $breakdown = $this->calculateResignationBreakdown((int)$id, $adjustedBase, (float)$workedDays);
         } catch (\Throwable $e) {
             error_log('editEmployee breakdown failed: ' . $e->getMessage());
             $breakdown = [
-                'salary_amount' => (float)$employee['base_salary'],
+                'salary_amount' => $adjustedBase,
                 'absence_days' => 0,
                 'absence_deduction' => 0.0,
                 'overtime_amount' => 0.0,
@@ -357,7 +374,7 @@ class HrController extends Controller
                 'housing_deduction' => 0.0,
                 'other_deductions' => 0.0,
                 'insurance_refund' => 0.0,
-                'total_due' => (float)$employee['base_salary'],
+                'total_due' => $adjustedBase,
             ];
         }
         if (!empty($resignation['calculation_breakdown_json'])) {
@@ -554,7 +571,7 @@ class HrController extends Controller
         }
 
         if ($status === 'resigned') {
-            $this->saveResignationRecord((int)$id, $employee['base_salary'] ?? 0);
+            $this->saveResignationRecord((int)$id, HrService::adjustedMonthlyBase((int)$id, date('Y-m')));
         }
 
         if ($userId) {
@@ -906,6 +923,10 @@ class HrController extends Controller
             'evaluations' => HrService::getEmployeeEvaluations((int)$id),
             'auditLogs' => $this->filterSalaryAuditLogs(EmployeeAuditService::getByEmployee((int)$id), $canViewSalary),
             'resignation' => $resignation,
+            // الراتب المعروض في الملف الشخصي يطابق صفحة الرواتب (الأساسي + زيادات الفترة − تخفيض الفترة)
+            'adjustedSalary' => HrService::adjustedMonthlyBase((int)$id, date('Y-m')),
+            // رقم الراتب المعروض ضمن بيانات المخالصة يُحسب على شهر الاستقالة نفسه
+            'settlementSalary' => $resignation ? HrService::adjustedMonthlyBase((int)$id, date('Y-m', strtotime($resignation['resignation_date']))) : null,
             'canViewSalary' => $canViewSalary,
         ]);
     }
@@ -2494,7 +2515,10 @@ class HrController extends Controller
         foreach ($settlements as &$s) {
             $b = json_decode($s['calculation_breakdown_json'] ?? '', true) ?: [];
             $s['breakdown'] = $b;
-            $earnings = (float)($b['salary_amount'] ?? 0) + (float)($b['overtime_amount'] ?? 0);
+            // رقم «الراتب» المعروض يطابق صفحة الرواتب: الأساس المعدّل لشهر الاستقالة
+            // (الأساسي + الزيادات − التخفيض)، وليس القيمة الخام المخزّنة وقت المخالصة
+            $s['display_salary'] = HrService::adjustedMonthlyBase((int)$s['employee_id'], date('Y-m', strtotime($s['resignation_date'])));
+            $earnings = (float)$s['display_salary'] + (float)($b['overtime_amount'] ?? 0);
             $deductions = (float)($b['absence_deduction'] ?? 0) + (float)($b['advances_amount'] ?? 0)
                 + (float)($b['housing_deduction'] ?? 0) + (float)($b['other_deductions'] ?? 0);
             $settlementsSummary['count']++;
@@ -5461,7 +5485,7 @@ class HrController extends Controller
                     }
 
                     if ($status === 'resigned' && $old['status'] !== 'resigned') {
-                        $this->saveResignationRecord($employeeId, $old['base_salary'] ?? 0);
+                        $this->saveResignationRecord($employeeId, HrService::adjustedMonthlyBase($employeeId, $currentPeriod));
                     }
 
                     $username = !empty($row['username']) ? trim((string)$row['username']) : null;

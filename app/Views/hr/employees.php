@@ -137,7 +137,7 @@ $exportQueryPdf = $exportQuery ? $exportQuery . '&format=pdf' : 'format=pdf';
         <td><?= Helpers::e($e['department_name'] ?? $e['department'] ?? '-') ?></td>
         <td><?= Helpers::e($e['manager_name'] ?? '-') ?></td>
         <?php if ($canViewSalary): ?>
-        <td data-order="<?= (float)($e['base_salary'] ?? 0) ?>"><?= Helpers::money($e['base_salary']) ?></td>
+        <td data-order="<?= (float)($e['adjusted_salary'] ?? $e['base_salary'] ?? 0) ?>"><?= Helpers::money($e['adjusted_salary'] ?? $e['base_salary']) ?></td>
         <?php endif; ?>
         <td data-order="<?= Helpers::e($e['hire_date'] ?? '') ?>"><?= $e['hire_date'] ?? '-' ?></td>
         <td data-order="<?= Helpers::e($e['status']) ?>">

@@ -428,7 +428,7 @@ $exportBase = http_build_query($exportQuery);
           </td>
           <td><?= Helpers::e($s['resignation_date']) ?></td>
           <td><?= Helpers::e($s['days_worked']) ?></td>
-          <td class="col-earning">+<?= Helpers::money($b['salary_amount'] ?? 0) ?></td>
+          <td class="col-earning">+<?= Helpers::money($s['display_salary'] ?? ($b['salary_amount'] ?? 0)) ?></td>
           <td class="col-earning">+<?= Helpers::money($b['overtime_amount'] ?? 0) ?></td>
           <td class="col-deduction">−<?= Helpers::money($b['absence_deduction'] ?? 0) ?></td>
           <td class="col-deduction">−<?= Helpers::money($b['advances_amount'] ?? 0) ?></td>
