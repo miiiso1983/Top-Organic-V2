@@ -10,28 +10,33 @@
         <?php endforeach; ?>
       </select>
     </div>
-    <div class="form-row"><label>المبلغ</label><input type="number" name="amount" step="0.01" min="0.01" required></div>
+    <div class="form-row"><label>المبلغ</label><input type="number" name="amount" id="advance-amount-input" step="0.01" min="0.01" required oninput="autoFillInstallmentAmount()"></div>
     <div class="form-row"><label>النوع</label>
       <select name="advance_type" id="advance-type-select" onchange="toggleAdvanceFields()"><option value="short">قصيرة الأجل</option><option value="long">طويلة الأجل</option></select>
     </div>
-    <div class="form-row" id="installments-row"><label>عدد الأقساط</label><input type="number" name="installments" value="1" min="1"></div>
+    <div class="form-row" id="installments-row"><label>عدد الأقساط</label><input type="number" name="installments" id="advance-installments-input" value="1" min="1" oninput="autoFillInstallmentAmount()"></div>
     <div class="form-row" id="installment-method-row" style="display:none"><label>طريقة احتساب القسط</label>
       <select name="installment_method" id="installment-method-select" onchange="toggleInstallmentMethod()">
-        <option value="fixed">مبلغ ثابت مستقطع شهرياً</option>
+        <option value="fixed">مبلغ ثابت مستقطع شهرياً (يُحسب تلقائياً حسب عدد الأقساط)</option>
         <option value="percentage">نسبة % من الراتب الأساسي</option>
       </select>
     </div>
-    <div class="form-row" id="installment-amount-row" style="display:none"><label>مبلغ القسط الشهري</label><input type="number" name="installment_amount" step="0.01" min="0.01"></div>
+    <div class="form-row" id="installment-amount-row" style="display:none"><label>مبلغ القسط الشهري</label><input type="number" name="installment_amount" id="advance-installment-amount-input" step="0.01" min="0.01" readonly style="background:#f1f5f9">
+      <span class="text-muted" style="font-size:12px;display:block">يُحسب تلقائياً = المبلغ ÷ عدد الأقساط المدخل أعلاه; غيّر عدد الأقساط لتعديل القسط</span></div>
     <div class="form-row" id="installment-percentage-row" style="display:none"><label>نسبة القسط %</label><input type="number" name="installment_percentage" step="0.01" min="0.01" max="100"></div>
     <div class="form-row"><label>السبب</label><input name="reason"></div>
     <button class="btn btn-success">تقديم الطلب</button>
   </form>
-  <p class="text-muted" style="margin-top:10px">السلف طويلة الأجل تخضع للموافقات وتولد جدول سداد تلقائياً؛ يمكن تحديد القسط الشهري كمبلغ ثابت أو كنسبة من الراتب الأساسي (يُحتسب عدد الأقساط تلقائياً)، أو ترك ذلك فارغاً وتحديد عدد الأقساط يدوياً لتقسيم المبلغ بالتساوي.</p>
+  <p class="text-muted" style="margin-top:10px">السلف طويلة الأجل تخضع للموافقات وتولد جدول سداد تلقائياً؛ عند اختيار "مبلغ ثابت شهرياً" يكفي إدخال عدد الأقساط فقط ويُحسب مبلغ القسط الشهري تلقائياً بقسمة المبلغ على عدد الأقساط دون الحاجة لكتابته، أو اختيار "نسبة % من الراتب الأساسي" لتحديد القسط كنسبة من الراتب (يُحسب عدد الأقساط حينئذ تلقائياً).</p>
   <script>
   function toggleAdvanceFields() {
       var isLong = document.getElementById('advance-type-select').value === 'long';
       document.getElementById('installment-method-row').style.display = isLong ? '' : 'none';
-      if (isLong) { toggleInstallmentMethod(); } else {
+      if (isLong) {
+          var installmentsField = document.getElementById('advance-installments-input');
+          if ((parseInt(installmentsField.value) || 1) < 2) installmentsField.value = 2; // السلفة طويلة الأجل تتطلب قسطين على الأقل منطقياً
+          toggleInstallmentMethod();
+      } else {
           document.getElementById('installment-amount-row').style.display = 'none';
           document.getElementById('installment-percentage-row').style.display = 'none';
       }
@@ -40,6 +45,17 @@
       var method = document.getElementById('installment-method-select').value;
       document.getElementById('installment-amount-row').style.display = method === 'fixed' ? '' : 'none';
       document.getElementById('installment-percentage-row').style.display = method === 'percentage' ? '' : 'none';
+      autoFillInstallmentAmount();
+  }
+  // يحسب مبلغ القسط الشهري تلقائياً (المبلغ ÷ عدد الأقساط) فور تغيير أي منهما، دون حاجة لكتابته يدوياً
+  function autoFillInstallmentAmount() {
+      var isLong = document.getElementById('advance-type-select').value === 'long';
+      var method = document.getElementById('installment-method-select').value;
+      if (!isLong || method !== 'fixed') return;
+      var amount = parseFloat(document.getElementById('advance-amount-input').value) || 0;
+      var installments = parseInt(document.getElementById('advance-installments-input').value) || 0;
+      var field = document.getElementById('advance-installment-amount-input');
+      field.value = (amount > 0 && installments > 0) ? (Math.round((amount / installments) * 100) / 100) : '';
   }
   function validateAdvanceForm(form) {
       if (form.advance_type.value === 'long') {

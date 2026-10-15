@@ -2236,6 +2236,24 @@ class HrController extends Controller
             // إعادة توليد جدول الأقساط بناءً على تاريخ الصرف الفعلي (للسلف المقسطة)
             HrService::generateRepaymentSchedule($advanceId);
             AccountingService::postAdvance($advanceId);
+
+            // استقطاع القسط فعلياً من الراتب لا يبدأ إلا بعد الصرف (هذا السطر)، لذا إذا كان مسير
+            // الراتب لنفس الموظف/الفترة قد تولّد مسبقاً كمسودة (قبل الصرف)، نعيد توليده فوراً ليعكس الاستقطاع الجديد
+            // فوراً دون انتظار ضغط "توليد" يدوياً. لا نلمس المسيرات المعتمدة/المصروفة لأنها مقفلة ومرحّلة محاسبياً.
+            $affectedPeriods = Database::query(
+                "SELECT DISTINCT period FROM advance_repayment_schedule WHERE advance_id = ? AND status = 'pending'",
+                [$advanceId]
+            )->fetchAll(\PDO::FETCH_COLUMN);
+            foreach ($affectedPeriods as $period) {
+                $draftPayroll = Database::query(
+                    "SELECT id FROM payrolls WHERE employee_id = ? AND period = ? AND status = 'draft'",
+                    [(int)$advance['employee_id'], $period]
+                )->fetch();
+                if ($draftPayroll) {
+                    HrService::generatePayroll((int)$advance['employee_id'], $period, Auth::id());
+                }
+            }
+
             Database::commit();
             $this->flash('success', 'تم صرف السلفة');
         } catch (\Throwable $e) {
