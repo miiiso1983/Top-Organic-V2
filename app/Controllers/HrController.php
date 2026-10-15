@@ -2053,31 +2053,38 @@ class HrController extends Controller
                 Response::redirect('/accounting/advances');
             }
         }
-        Database::query(
-            "INSERT INTO salary_advances (employee_id, amount, advance_type, installments, reason, request_source, is_long_term, remaining_amount, installment_method, installment_percentage, installment_amount)
-             VALUES (?,?,?,?,?,'web',?,?,?,?,?)",
-            [$employeeId, $amount, $advanceType, $installments,
-             (string)$this->input('reason'), $isLongTerm ? 1 : 0, $amount,
-             $installmentMethod, $installmentPercentage, $installmentAmount]
-        );
-        $advanceId = (int)Database::lastInsertId();
-        Helpers::queueSync('salary_advances', $advanceId, 'insert', [
-            'employee_id' => $employeeId, 'amount' => $amount,
-        ]);
-        $emp = Database::query("SELECT * FROM employees WHERE id = ?", [(int)$this->input('employee_id')])->fetch();
-        $workflowId = HrWorkflowService::request('salary_advance', $advanceId, (int)Auth::id(), [
-            'employee_id' => (int)$this->input('employee_id'),
-            'employee_name' => $emp['full_name'] ?? '',
-            'amount' => $amount,
-            'advance_type' => $advanceType,
-            'installments' => $installments,
-            'reason' => (string)$this->input('reason'),
-            'title' => 'طلب سلفة - ' . Helpers::e($emp['full_name'] ?? '') . ' - ' . Helpers::money($amount),
-        ]);
-        if ($workflowId) {
-            $this->flash('success', 'تم تقديم طلب السلفة وأرسل للموافقة');
-        } else {
-            $this->flash('warning', 'تم تقديم طلب السلفة لكن لا يوجد مسار موافقات نشط لهذا النوع');
+        Database::beginTransaction();
+        try {
+            Database::query(
+                "INSERT INTO salary_advances (employee_id, amount, advance_type, installments, reason, request_source, is_long_term, remaining_amount, installment_method, installment_percentage, installment_amount)
+                 VALUES (?,?,?,?,?,'web',?,?,?,?,?)",
+                [$employeeId, $amount, $advanceType, $installments,
+                 (string)$this->input('reason'), $isLongTerm ? 1 : 0, $amount,
+                 $installmentMethod, $installmentPercentage, $installmentAmount]
+            );
+            $advanceId = (int)Database::lastInsertId();
+            $emp = Database::query("SELECT * FROM employees WHERE id = ?", [(int)$this->input('employee_id')])->fetch();
+            $workflowId = HrWorkflowService::request('salary_advance', $advanceId, (int)Auth::id(), [
+                'employee_id' => (int)$this->input('employee_id'),
+                'employee_name' => $emp['full_name'] ?? '',
+                'amount' => $amount,
+                'advance_type' => $advanceType,
+                'installments' => $installments,
+                'reason' => (string)$this->input('reason'),
+                'title' => 'طلب سلفة - ' . Helpers::e($emp['full_name'] ?? '') . ' - ' . Helpers::money($amount),
+            ]);
+            Database::commit();
+            Helpers::queueSync('salary_advances', $advanceId, 'insert', [
+                'employee_id' => $employeeId, 'amount' => $amount,
+            ]);
+            if ($workflowId) {
+                $this->flash('success', 'تم تقديم طلب السلفة وأرسل للموافقة');
+            } else {
+                $this->flash('warning', 'تم تقديم طلب السلفة لكن لا يوجد مسار موافقات نشط لهذا النوع');
+            }
+        } catch (\Throwable $e) {
+            Database::rollBack();
+            $this->flash('danger', 'تعذر تقديم طلب السلفة: ' . $e->getMessage());
         }
         Response::redirect('/accounting/advances');
     }
