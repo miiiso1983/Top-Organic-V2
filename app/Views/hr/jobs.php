@@ -63,11 +63,16 @@
     <div class="form-row"><label>الفترة (للعدد المخطط)</label><input type="month" name="period" value="<?= Helpers::e($period) ?>"></div>
     <button class="btn">عرض</button>
   </form>
+  <div class="form-inline" style="margin-top:8px">
+    <div class="form-row"><label><i class="fa-solid fa-magnifying-glass"></i> بحث بالمسمى الوظيفي</label>
+      <input type="text" id="job-title-search" placeholder="اكتب للبحث عن مسمى وظيفي..." oninput="filterJobsByTitle()" style="min-width:260px">
+    </div>
+  </div>
   <div style="overflow:auto">
     <table>
       <tr><th>#</th><th>المسمى الوظيفي</th><th>القسم</th><th>الدور</th><th>الرمز</th><th>العدد الفعلي</th><th>العدد المخطط له</th><th>حفظ</th><th>حذف</th></tr>
       <?php foreach ($jobs as $j): ?>
-      <tr>
+      <tr class="job-row" data-title="<?= Helpers::e(mb_strtolower($j['title'], 'UTF-8')) ?>">
         <td><?= $j['id'] ?></td>
         <td><input name="title" form="job-form-<?= $j['id'] ?>" value="<?= Helpers::e($j['title']) ?>" required></td>
         <td>
@@ -106,9 +111,24 @@
       </tr>
       <?php endforeach; ?>
       <?php if (!$jobs): ?><tr><td colspan="9">لا توجد وظائف</td></tr><?php endif; ?>
+      <tr id="job-search-no-results" style="display:none"><td colspan="9">لا توجد وظائف مطابقة للبحث</td></tr>
     </table>
   </div>
 </div>
+<script>
+function filterJobsByTitle() {
+  var q = (document.getElementById('job-title-search').value || '').trim().toLowerCase();
+  var rows = document.querySelectorAll('tr.job-row');
+  var visibleCount = 0;
+  rows.forEach(function (row) {
+    var match = !q || (row.getAttribute('data-title') || '').indexOf(q) !== -1;
+    row.style.display = match ? '' : 'none';
+    if (match) visibleCount++;
+  });
+  var noResults = document.getElementById('job-search-no-results');
+  if (noResults) noResults.style.display = (q && visibleCount === 0) ? '' : 'none';
+}
+</script>
 
 <?php if (Auth::can('admin.users')): ?>
 <?php
