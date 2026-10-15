@@ -6178,6 +6178,180 @@ class HrController extends Controller
         $this->view('hr/kpis', ['title' => 'مؤشرات الأداء', 'kpis' => $kpis, 'jobs' => $jobs, 'departments' => $departments]);
     }
 
+    /** تنزيل قالب Excel فارغ لاستيراد مؤشرات الأداء بالجملة */
+    public function kpisTemplate(): void
+    {
+        $sampleJobTitle = (string)(Database::query("SELECT title FROM jobs WHERE is_active=1 ORDER BY title LIMIT 1")->fetchColumn() ?: 'اسم الوظيفة كما يظهر في النظام');
+        $headers = ['اسم الوظيفة (افصل بين عدة وظائف بفاصلة ،)', 'اسم المؤشر', 'الوصف', 'الوزن النسبي %', 'الحالة (نشط/متوقف)'];
+        $sample = [$sampleJobTitle, 'الالتزام بالمواعيد', 'الحضور والانصراف في الوقت المحدد دون تأخير', 10, 'نشط'];
+        ImportHelper::downloadTemplate($headers, 'kpis_template.xlsx', $sample);
+    }
+
+    /** استيراد مؤشرات الأداء بالجملة من ملف Excel/CSV (إنشاء مؤشرات جديدة وربطها بالوظائف المحددة) */
+    public function importKpis(): void
+    {
+        if (!Auth::can('hr.evaluation.manage')) {
+            $this->flash('danger', 'ليس لديك صلاحية');
+            Response::redirect('/hr/kpis');
+            return;
+        }
+        if (empty($_FILES['import_file']['tmp_name']) || $_FILES['import_file']['error'] !== UPLOAD_ERR_OK) {
+            $this->flash('danger', 'لم يتم اختيار ملف');
+            Response::redirect('/hr/kpis');
+            return;
+        }
+        $read = ImportHelper::readFile($_FILES['import_file']['tmp_name']);
+        if ($read['errors']) {
+            ImportHelper::flashErrors($read['errors']);
+            $this->flash('danger', 'خطأ في قراءة الملف');
+            Response::redirect('/hr/kpis');
+            return;
+        }
+        $rows = $read['rows'];
+        if (!$rows) {
+            $this->flash('danger', 'الملف لا يحتوي على بيانات');
+            Response::redirect('/hr/kpis');
+            return;
+        }
+
+        // توحيد أسماء الأعمدة العربية المحتملة إلى مفاتيح داخلية موحّدة
+        $columnMap = [
+            'اسم الوظيفة (افصل بين عدة وظائف بفاصلة ،)' => 'job_titles',
+            'اسم الوظيفة' => 'job_titles', 'الوظيفة' => 'job_titles', 'الوظائف' => 'job_titles',
+            'اسم المؤشر' => 'name', 'الاسم' => 'name',
+            'الوصف' => 'description',
+            'الوزن النسبي %' => 'weight', 'الوزن النسبي' => 'weight', 'الوزن' => 'weight',
+            'الحالة (نشط/متوقف)' => 'status_label', 'الحالة' => 'status_label',
+        ];
+        foreach ($rows as &$row) {
+            foreach ($row as $colName => $colValue) {
+                $trimmedName = trim((string)$colName);
+                if (isset($columnMap[$trimmedName])) {
+                    $key = $columnMap[$trimmedName];
+                    if (!isset($row[$key]) || $row[$key] === '' || $row[$key] === null) {
+                        $row[$key] = $colValue;
+                    }
+                }
+            }
+        }
+        unset($row);
+
+        $jobs = Database::query("SELECT id, title FROM jobs WHERE is_active = 1")->fetchAll();
+        $jobMap = [];
+        $jobTitleById = [];
+        foreach ($jobs as $j) {
+            $jobMap[mb_strtolower(trim($j['title']), 'UTF-8')] = (int)$j['id'];
+            $jobTitleById[(int)$j['id']] = $j['title'];
+        }
+
+        // أوزان المؤشرات الفعّالة الحالية لكل وظيفة (قبل هذا الاستيراد)
+        $existingRows = Database::query(
+            "SELECT pk.weight, pkj.job_id FROM performance_kpis pk
+             JOIN performance_kpi_jobs pkj ON pkj.kpi_id = pk.id
+             WHERE pk.is_active = 1"
+        )->fetchAll();
+        $existingWeightByJob = [];
+        foreach ($existingRows as $r) {
+            $jid = (int)$r['job_id'];
+            $existingWeightByJob[$jid] = ($existingWeightByJob[$jid] ?? 0) + (float)$r['weight'];
+        }
+
+        $statusReverse = ['نشط' => 1, 'متوقف' => 0, 'غير نشط' => 0, 'موقوف' => 0];
+
+        $errors = [];
+        $processedRows = [];
+        $importWeightByJob = []; // تراكمي عبر صفوف هذا الملف فقط (للكشف عن التجاوز بين صفوف الملف نفسها)
+
+        foreach ($rows as $idx => $row) {
+            $line = $idx + 2;
+            $name = trim((string)($row['name'] ?? ''));
+            $jobTitlesRaw = trim((string)($row['job_titles'] ?? ''));
+            $weightRaw = $row['weight'] ?? null;
+            $statusLabel = trim((string)($row['status_label'] ?? ''));
+
+            if ($name === '') {
+                $errors[] = "الصف $line: اسم المؤشر مطلوب";
+            }
+            if ($jobTitlesRaw === '') {
+                $errors[] = "الصف $line: يجب تحديد وظيفة واحدة على الأقل";
+            }
+            if ($weightRaw === null || $weightRaw === '' || !is_numeric($weightRaw)) {
+                $errors[] = "الصف $line: الوزن النسبي مطلوب ويجب أن يكون رقماً";
+            }
+            $isActive = $statusLabel === '' ? 1 : ($statusReverse[$statusLabel] ?? null);
+            if ($isActive === null) {
+                $errors[] = "الصف $line: قيمة الحالة غير معروفة (استخدم نشط أو متوقف)";
+            }
+
+            $jobIds = [];
+            if ($jobTitlesRaw !== '') {
+                foreach (preg_split('/[،,\/]+/u', $jobTitlesRaw) as $t) {
+                    $t = trim($t);
+                    if ($t === '') continue;
+                    $jid = $jobMap[mb_strtolower($t, 'UTF-8')] ?? null;
+                    if (!$jid) {
+                        $errors[] = "الصف $line: الوظيفة \"$t\" غير موجودة في النظام";
+                        continue;
+                    }
+                    $jobIds[] = $jid;
+                }
+                $jobIds = array_values(array_unique($jobIds));
+            }
+
+            if ($name === '' || !$jobIds || !is_numeric($weightRaw) || $isActive === null) {
+                continue; // بيانات ناقصة بهذا الصف — تم تسجيل الخطأ أعلاه، تخطّي التحقق من الوزن التراكمي
+            }
+            $weightVal = max(0, min(100, (float)$weightRaw));
+            if ($isActive) {
+                foreach ($jobIds as $jid) {
+                    $importWeightByJob[$jid] = ($importWeightByJob[$jid] ?? 0) + $weightVal;
+                }
+            }
+            $processedRows[] = [
+                'name' => $name, 'description' => trim((string)($row['description'] ?? '')),
+                'weight' => $weightVal, 'is_active' => $isActive, 'job_ids' => $jobIds,
+            ];
+        }
+
+        // التحقق التراكمي: وزن الوظائف الحالي + وزن صفوف هذا الملف (المفعّلة) يجب ألا يتجاوز 100%
+        foreach ($importWeightByJob as $jid => $addedWeight) {
+            $total = ($existingWeightByJob[$jid] ?? 0) + $addedWeight;
+            if ($total > 100.0001) {
+                $label = $jobTitleById[$jid] ?? ('#' . $jid);
+                $errors[] = 'لا يمكن الاستيراد: مجموع أوزان المؤشرات لوظيفة "' . $label . '" سيصبح ' . number_format($total, 2) . '% ويتجاوز الحد المسموح 100%';
+            }
+        }
+
+        if ($errors) {
+            ImportHelper::flashErrors($errors);
+            $this->flash('danger', 'يوجد ' . count($errors) . ' خطأ في الملف، لم يتم استيراد أي بيانات');
+            Response::redirect('/hr/kpis');
+            return;
+        }
+
+        Database::beginTransaction();
+        try {
+            $createdCount = 0;
+            foreach ($processedRows as $item) {
+                Database::query(
+                    "INSERT INTO performance_kpis (name, description, weight, is_active) VALUES (?,?,?,?)",
+                    [$item['name'], $item['description'], $item['weight'], $item['is_active']]
+                );
+                $kpiId = (int)Database::lastInsertId();
+                foreach ($item['job_ids'] as $jobId) {
+                    Database::query("INSERT IGNORE INTO performance_kpi_jobs (kpi_id, job_id) VALUES (?,?)", [$kpiId, $jobId]);
+                }
+                $createdCount++;
+            }
+            Database::commit();
+            $this->flash('success', "تم استيراد $createdCount مؤشر أداء بنجاح");
+        } catch (\Throwable $e) {
+            Database::rollBack();
+            $this->flash('danger', 'فشل الاستيراد: ' . $e->getMessage());
+        }
+        Response::redirect('/hr/kpis');
+    }
+
     /** استخراج قائمة معرّفات وظائف صحيحة من مُدخل قد يكون مصفوفة أو قيمة واحدة أو فارغًا */
     private function inputJobIds(): array
     {

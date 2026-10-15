@@ -1,4 +1,11 @@
-<?php use App\Core\Helpers; ?>
+<?php use App\Core\{Helpers, ImportHelper}; ?>
+<?php $importErrors = ImportHelper::getErrors(); ?>
+<?php if ($importErrors): ?>
+<div class="alert alert-danger">
+  <strong>أخطاء الاستيراد:</strong>
+  <ul><?php foreach ($importErrors as $err): ?><li><?= Helpers::e($err) ?></li><?php endforeach; ?></ul>
+</div>
+<?php endif; ?>
 <script>
 var KPI_JOBS = <?= json_encode(array_map(fn($j) => [
     'id' => (int)$j['id'],
@@ -16,6 +23,18 @@ var KPI_LIST = <?= json_encode(array_map(fn($k) => [
     'job_ids' => array_values(array_filter(array_map('intval', explode(',', (string)($k['job_ids'] ?? ''))))),
 ], $kpis), JSON_UNESCAPED_UNICODE) ?>;
 </script>
+
+<div class="card" style="margin-bottom:16px">
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+    <a href="/hr/kpis/template" class="btn btn-secondary" title="قالب فارغ لإضافة مؤشرات جديدة بالجملة">
+      <i class="fa-solid fa-file-arrow-down"></i> قالب استيراد
+    </a>
+    <form method="post" action="/hr/kpis/import" enctype="multipart/form-data" style="display:inline-flex;gap:6px;align-items:center" onsubmit="return confirm('سيتم إضافة مؤشرات أداء جديدة وفق بيانات الملف المرفوع. هل تريد المتابعة؟')">
+      <input type="file" name="import_file" accept=".xlsx,.xls,.csv" required style="max-width:220px">
+      <button type="submit" class="btn btn-primary" title="يقبل القالب أعلاه لإضافة مؤشرات جديدة بالجملة"><i class="fa-solid fa-file-import"></i> استيراد Excel</button>
+    </form>
+  </div>
+</div>
 
 <div class="card">
   <h3>عرض مؤشرات الأداء حسب الوظيفة</h3>

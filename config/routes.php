@@ -558,6 +558,8 @@ $router->post('/hr/evaluations/{id}/finalize', [HrController::class, 'finalizeEv
 $router->post('/hr/reports/evaluations/save', [HrController::class, 'saveJobPerformanceEvaluation'], ['auth', 'perm:hr.evaluation.manage']);
 $router->post('/hr/reports/evaluations/delete', [HrController::class, 'deleteJobPerformanceEvaluation'], ['auth', 'perm:hr.evaluation.manage']);
 $router->get('/hr/kpis', [HrController::class, 'kpis'], ['auth', 'perm:hr.evaluation.manage']);
+$router->get('/hr/kpis/template', [HrController::class, 'kpisTemplate'], ['auth', 'perm:hr.evaluation.manage']);
+$router->post('/hr/kpis/import', [HrController::class, 'importKpis'], ['auth', 'perm:hr.evaluation.manage']);
 $router->post('/hr/kpis', [HrController::class, 'storeKpi'], ['auth', 'perm:hr.evaluation.manage']);
 $router->post('/hr/kpis/{id}', [HrController::class, 'updateKpi'], ['auth', 'perm:hr.evaluation.manage']);
 $router->post('/hr/kpis/{id}/toggle', [HrController::class, 'toggleKpi'], ['auth', 'perm:hr.evaluation.manage']);
