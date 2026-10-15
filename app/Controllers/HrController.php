@@ -6244,22 +6244,14 @@ class HrController extends Controller
             $jobTitleById[(int)$j['id']] = $j['title'];
         }
 
-        // أوزان المؤشرات الفعّالة الحالية لكل وظيفة (قبل هذا الاستيراد)
-        $existingRows = Database::query(
-            "SELECT pk.weight, pkj.job_id FROM performance_kpis pk
-             JOIN performance_kpi_jobs pkj ON pkj.kpi_id = pk.id
-             WHERE pk.is_active = 1"
-        )->fetchAll();
-        $existingWeightByJob = [];
-        foreach ($existingRows as $r) {
-            $jid = (int)$r['job_id'];
-            $existingWeightByJob[$jid] = ($existingWeightByJob[$jid] ?? 0) + (float)$r['weight'];
-        }
-
+        // ملاحظة: الاستيراد يعتمد مبدأ "استبدال كامل لكل وظيفة" — أي وظيفة تظهر في الملف
+        // تُحذف مؤشراتها السابقة بالكامل وتُستبدل بمؤشرات الملف فقط، لذا لا حاجة لجمع
+        // أوزانها الحالية هنا؛ سقف 100% يُحتسب فقط من مجموع أوزان صفوف الملف لكل وظيفة.
         $statusReverse = ['نشط' => 1, 'متوقف' => 0, 'غير نشط' => 0, 'موقوف' => 0];
 
         $errors = [];
         $processedRows = [];
+        $jobsInFile = []; // كل الوظائف التي ظهرت في الملف (مفعّلة أو متوقفة) — سيُستبدل كل مؤشراتها السابقة
         $importWeightByJob = []; // تراكمي عبر صفوف هذا الملف فقط (للكشف عن التجاوز بين صفوف الملف نفسها)
 
         foreach ($rows as $idx => $row) {
@@ -6302,6 +6294,9 @@ class HrController extends Controller
                 continue; // بيانات ناقصة بهذا الصف — تم تسجيل الخطأ أعلاه، تخطّي التحقق من الوزن التراكمي
             }
             $weightVal = max(0, min(100, (float)$weightRaw));
+            foreach ($jobIds as $jid) {
+                $jobsInFile[$jid] = true;
+            }
             if ($isActive) {
                 foreach ($jobIds as $jid) {
                     $importWeightByJob[$jid] = ($importWeightByJob[$jid] ?? 0) + $weightVal;
@@ -6312,13 +6307,14 @@ class HrController extends Controller
                 'weight' => $weightVal, 'is_active' => $isActive, 'job_ids' => $jobIds,
             ];
         }
+        $jobsInFile = array_keys($jobsInFile);
 
-        // التحقق التراكمي: وزن الوظائف الحالي + وزن صفوف هذا الملف (المفعّلة) يجب ألا يتجاوز 100%
+        // التحقق: وزن مؤشرات الملف وحدها (المفعّلة) لكل وظيفة يجب ألا يتجاوز 100%
+        // (لا تُضاف الأوزان الحالية لأن مؤشرات هذه الوظيفة ستُحذف بالكامل وتُستبدل بمؤشرات الملف)
         foreach ($importWeightByJob as $jid => $addedWeight) {
-            $total = ($existingWeightByJob[$jid] ?? 0) + $addedWeight;
-            if ($total > 100.0001) {
+            if ($addedWeight > 100.0001) {
                 $label = $jobTitleById[$jid] ?? ('#' . $jid);
-                $errors[] = 'لا يمكن الاستيراد: مجموع أوزان المؤشرات لوظيفة "' . $label . '" سيصبح ' . number_format($total, 2) . '% ويتجاوز الحد المسموح 100%';
+                $errors[] = 'لا يمكن الاستيراد: مجموع أوزان المؤشرات الجديدة لوظيفة "' . $label . '" في الملف يبلغ ' . number_format($addedWeight, 2) . '% ويتجاوز الحد المسموح 100%';
             }
         }
 
@@ -6331,6 +6327,22 @@ class HrController extends Controller
 
         Database::beginTransaction();
         try {
+            // حذف المؤشرات السابقة الخاصة بكل وظيفة ظهرت في الملف فقط (وظائف الملف وحدها، لا باقي الوظائف):
+            // - إن كان المؤشر مرتبطاً بهذه الوظيفة فقط: يُحذف المؤشر بالكامل (الحذف يُسقط ربطه تلقائياً عبر CASCADE).
+            // - إن كان المؤشر مشتركاً مع وظائف أخرى: يُحذف ربطه بهذه الوظيفة فقط، ويبقى المؤشر قائماً لباقي وظائفه.
+            foreach ($jobsInFile as $jobId) {
+                $linkedKpis = Database::query("SELECT kpi_id FROM performance_kpi_jobs WHERE job_id = ?", [$jobId])->fetchAll();
+                foreach ($linkedKpis as $lk) {
+                    $kpiId = (int)$lk['kpi_id'];
+                    $linkCount = (int)Database::query("SELECT COUNT(*) FROM performance_kpi_jobs WHERE kpi_id = ?", [$kpiId])->fetchColumn();
+                    if ($linkCount <= 1) {
+                        Database::query("DELETE FROM performance_kpis WHERE id = ?", [$kpiId]);
+                    } else {
+                        Database::query("DELETE FROM performance_kpi_jobs WHERE kpi_id = ? AND job_id = ?", [$kpiId, $jobId]);
+                    }
+                }
+            }
+
             $createdCount = 0;
             foreach ($processedRows as $item) {
                 Database::query(
@@ -6344,7 +6356,8 @@ class HrController extends Controller
                 $createdCount++;
             }
             Database::commit();
-            $this->flash('success', "تم استيراد $createdCount مؤشر أداء بنجاح");
+            $jobsCount = count($jobsInFile);
+            $this->flash('success', "تم حذف المؤشرات السابقة لـ $jobsCount وظيفة واعتماد $createdCount مؤشر أداء جديد بدلاً عنها");
         } catch (\Throwable $e) {
             Database::rollBack();
             $this->flash('danger', 'فشل الاستيراد: ' . $e->getMessage());

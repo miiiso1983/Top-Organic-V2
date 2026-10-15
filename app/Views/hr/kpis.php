@@ -29,9 +29,9 @@ var KPI_LIST = <?= json_encode(array_map(fn($k) => [
     <a href="/hr/kpis/template" class="btn btn-secondary" title="قالب فارغ لإضافة مؤشرات جديدة بالجملة">
       <i class="fa-solid fa-file-arrow-down"></i> قالب استيراد
     </a>
-    <form method="post" action="/hr/kpis/import" enctype="multipart/form-data" style="display:inline-flex;gap:6px;align-items:center" onsubmit="return confirm('سيتم إضافة مؤشرات أداء جديدة وفق بيانات الملف المرفوع. هل تريد المتابعة؟')">
+    <form method="post" action="/hr/kpis/import" enctype="multipart/form-data" style="display:inline-flex;gap:6px;align-items:center" onsubmit="return confirm('سيتم حذف المؤشرات السابقة الخاصة بكل وظيفة تظهر في الملف واستبدالها بمؤشرات الملف فقط، دون المساس بمؤشرات الوظائف الأخرى غير المذكورة في الملف. هل تريد المتابعة؟')">
       <input type="file" name="import_file" accept=".xlsx,.xls,.csv" required style="max-width:220px">
-      <button type="submit" class="btn btn-primary" title="يقبل القالب أعلاه لإضافة مؤشرات جديدة بالجملة"><i class="fa-solid fa-file-import"></i> استيراد Excel</button>
+      <button type="submit" class="btn btn-primary" title="يستبدل مؤشرات كل وظيفة موجودة في الملف بمؤشراته الجديدة فقط"><i class="fa-solid fa-file-import"></i> استيراد Excel (استبدال لكل وظيفة)</button>
     </form>
   </div>
 </div>
