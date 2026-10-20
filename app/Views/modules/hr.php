@@ -46,6 +46,14 @@
   </a>
   <?php endif; ?>
 
+  <?php if (Auth::can('hr.recruitment.manage')): ?>
+  <a href="/hr/recruitment" class="res-card">
+    <div class="icon"><i class="fa-solid fa-user-tie"></i></div>
+    <div class="title">طلبات التوظيف</div>
+    <div class="desc">المتقدمون لكل وظيفة</div>
+  </a>
+  <?php endif; ?>
+
   <?php if (Auth::can('hr.manage')): ?>
   <a href="/hr/shifts" class="res-card">
     <div class="icon"><i class="fa-solid fa-clock"></i></div>

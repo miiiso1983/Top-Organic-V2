@@ -8,13 +8,24 @@ use App\Controllers\{AuthController, DashboardController, PosController, OrderCo
     PreparationKitchenController, RecipeController, ProductionController, InventoryController, WarehouseController, CustodyController,
     PurchasingController, SupplierController, FinanceController, HrController,
     OrgChartController, ApprovalController, ReportController, AdminController, ApiController,
-    AccountingController, FixedAssetController, ARAPController, BankController, CostCenterController, FinancialReportController, WorkflowController, WorkflowDesignerController, ItemCardController, ItemCostSheetController, PreparedItemsController, ItemPriceController, PlateCostImportController, MaterialRequestController, MobileController, ModulesController, PttController, NotificationsController, ShiftController, MaintenanceController, HousingController, MailController, MailGroupController};
+    AccountingController, FixedAssetController, ARAPController, BankController, CostCenterController, FinancialReportController, WorkflowController, WorkflowDesignerController, ItemCardController, ItemCostSheetController, PreparedItemsController, ItemPriceController, PlateCostImportController, MaterialRequestController, MobileController, ModulesController, PttController, NotificationsController, ShiftController, MaintenanceController, HousingController, MailController, MailGroupController, RecruitmentController};
 
 $router = new Router();
 
 // المصادقة
 $router->get('/', [AuthController::class, 'loginForm']);
 $router->get('/login', [AuthController::class, 'loginForm']);
+
+// استمارة التقديم الوظيفي العامة (بدون تسجيل دخول)
+$router->get('/careers/apply', [RecruitmentController::class, 'applyForm']);
+$router->post('/careers/apply', [RecruitmentController::class, 'store']);
+$router->get('/careers/apply/thanks', [RecruitmentController::class, 'thanks']);
+
+// إدارة طلبات التوظيف (داخلي)
+$router->get('/hr/recruitment', [RecruitmentController::class, 'index'], ['auth', 'perm:hr.recruitment.manage']);
+$router->get('/hr/recruitment/jobs/{jobId}', [RecruitmentController::class, 'jobApplicants'], ['auth', 'perm:hr.recruitment.manage']);
+$router->get('/hr/recruitment/applications/{id}', [RecruitmentController::class, 'show'], ['auth', 'perm:hr.recruitment.manage']);
+$router->post('/hr/recruitment/applications/{id}/status', [RecruitmentController::class, 'updateStatus'], ['auth', 'perm:hr.recruitment.manage']);
 $router->post('/login', [AuthController::class, 'login']);
 $router->get('/logout', [AuthController::class, 'logout']);
 $router->get('/mobile/web-auth', [AuthController::class, 'webAuth']);
