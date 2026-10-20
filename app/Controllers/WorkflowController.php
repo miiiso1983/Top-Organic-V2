@@ -244,6 +244,7 @@ class WorkflowController extends Controller
             'request' => $req,
             'history' => WorkflowEngine::getHistory((int)$id),
             'steps' => $steps,
+            'stepApprovers' => $steps ? WorkflowEngine::getCurrentStepApproversStatus((int)$id, $steps, $req) : [],
             'graph' => $isGraph ? \App\Core\Workflow\Engine::graphForRequest((int)$id) : null,
             'canDecide' => $canDecide,
             'canEdit' => WorkflowEngine::canEditRequest((int)$id, (int) Auth::id()),

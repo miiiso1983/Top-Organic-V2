@@ -464,7 +464,18 @@ final class Engine
         AuditLogger::log((int)$req['id'], $status, null, $actorId, $notes);
         WorkflowEngine::triggerOutcomeHandlers($req, $status, $actorId, $notes);
         EntityRegistry::fireOutcome($req, $status, $actorId, $notes);
-        Helpers::notify((int)$req['requester_id'], $notifyMsg, (string)($req['title'] ?? ''), '/workflows/requests/' . (int)$req['id']);
+        $requesterId = (int)($req['requester_id'] ?? 0);
+        $link = '/workflows/requests/' . (int)$req['id'];
+        $actionType = match ($status) {
+            'approved' => 'approved',
+            'rejected' => 'rejected',
+            'returned_for_edit' => 'returned_for_edit',
+            default => 'status_update',
+        };
+        Helpers::notify($requesterId, $notifyMsg, (string)($req['title'] ?? ''), $link, null, null, [], null, 'request', (int)$req['id'], $actionType);
+        // إشعار Push للموبايل عند النتيجة النهائية (موافقة/رفض/إعادة للتعديل) — كان مفقوداً سابقاً
+        // على عكس إشعار التقدم للمرحلة التالية (notifyRequesterStepAdvanced) الذي كان يرسل Push بالفعل.
+        PushService::queue($requesterId, $notifyMsg, (string)($req['title'] ?? ''), $link, 'request', (int)$req['id'], $actionType);
     }
 
     private static function complete(int $requestId, string $status, int $actorId, string $notes): void

@@ -47,7 +47,7 @@
 
 <?php if ($steps): ?>
 <div class="card">
-  <h3>المرحلة الحالية: <?= $request['current_step'] ?></h3>
+  <h3>مسار الموافقة — المرحلة الحالية: <?= $request['current_step'] ?></h3>
   <ul>
     <?php foreach ($steps as $s): ?>
     <?php $ch = json_decode($s['notify_channels'] ?? '{}', true); ?>
@@ -60,6 +60,25 @@
     </li>
     <?php endforeach; ?>
   </ul>
+  <?php if ($stepApprovers): ?>
+  <table>
+    <tr><th>المخوّل بالقرار</th><th>الموقف</th><th>التاريخ</th><th>الملاحظات</th></tr>
+    <?php foreach ($stepApprovers as $sa): ?>
+    <tr>
+      <td><?= Helpers::e($sa['full_name'] ?? '-') ?></td>
+      <td>
+        <?php if ($sa['decision'] === 'approved'): ?><span class="badge badge-approved">✔ وافق</span>
+        <?php elseif ($sa['decision'] === 'rejected'): ?><span class="badge badge-rejected">✖ رفض</span>
+        <?php elseif ($sa['decision']): ?><span class="badge"><?= Helpers::e($sa['decision']) ?></span>
+        <?php else: ?><span class="badge badge-pending">⏳ بانتظار دوره</span>
+        <?php endif; ?>
+      </td>
+      <td><?= Helpers::e($sa['decided_at'] ?? '-') ?></td>
+      <td><?= Helpers::e($sa['notes'] ?? '') ?></td>
+    </tr>
+    <?php endforeach; ?>
+  </table>
+  <?php endif; ?>
 </div>
 <?php endif; ?>
 

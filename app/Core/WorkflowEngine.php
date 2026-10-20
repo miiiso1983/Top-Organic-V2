@@ -860,6 +860,28 @@ class WorkflowEngine
             return;
         }
 
+        foreach (self::resolveStepApproverIds($step, $req) as $uid) {
+            if (isset($notified[$uid])) continue;
+            $notified[$uid] = true;
+            self::addParticipant($requestId, $uid, 'approver');
+            self::dispatchNotification($channels, $uid, $title, $body, $link, $requestId, 'pending_approval', $metadata);
+        }
+    }
+
+    /**
+     * معرّفات المستخدمين المخوّلين بالقرار على هذه الخطوة (حسب نوع المعتمد: مدير مباشر/قسم،
+     * مسمى وظيفي، أو دور). مستخلصة من منطق notifyApprovers() لإعادة استخدامها أيضاً في عرض
+     * مسار الموافقة (من وافق/من رفض/من بانتظار دوره).
+     */
+    private static function resolveStepApproverIds(array $step, array $req): array
+    {
+        $ids = [];
+        $approverType = $step['approver_type'] ?? 'position';
+        if ($approverType === 'direct_manager' || $approverType === 'department_manager') {
+            $uid = self::resolveManagerApprover((int)($req['requester_employee_id'] ?? 0), $approverType);
+            if ($uid) $ids[$uid] = true;
+            return array_keys($ids);
+        }
         if ($step['job_title_id']) {
             $resolvedPos = self::resolveApproverPosition((int)($req['requester_position_id'] ?? 0), (int)$step['job_title_id']);
             if ($resolvedPos) {
@@ -870,25 +892,56 @@ class WorkflowEngine
                      WHERE op.id = ? AND u.is_active = 1",
                     [$resolvedPos]
                 )->fetchAll();
-                foreach ($users as $u) {
-                    $uid = (int)$u['id'];
-                    if (isset($notified[$uid])) continue;
-                    $notified[$uid] = true;
-                    self::addParticipant($requestId, $uid, 'approver');
-                    self::dispatchNotification($channels, $uid, $title, $body, $link, $requestId, 'pending_approval', $metadata);
-                }
+                foreach ($users as $u) { $ids[(int)$u['id']] = true; }
             }
         }
         if ($step['role_id']) {
             $roleUsers = Database::query("SELECT id FROM users WHERE role_id = ? AND is_active = 1", [(int)$step['role_id']])->fetchAll();
-            foreach ($roleUsers as $u) {
-                $uid = (int)$u['id'];
-                if (isset($notified[$uid])) continue;
-                $notified[$uid] = true;
-                self::addParticipant($requestId, $uid, 'approver');
-                self::dispatchNotification($channels, $uid, $title, $body, $link, $requestId, 'pending_approval', $metadata);
-            }
+            foreach ($roleUsers as $u) { $ids[(int)$u['id']] = true; }
         }
+        return array_keys($ids);
+    }
+
+    /**
+     * مسار الموافقة (Approval Timeline) للمرحلة الحالية في المحرك القديم (غير المخطط): يعيد قائمة
+     * بكل شخص مخوّل بالقرار على هذه المرحلة مع موقفه (موافق/رافض/بانتظار دوره) لضمان
+     * شفافية كاملة لمسار الموافقات في صفحة الطلب.
+     */
+    public static function getCurrentStepApproversStatus(int $requestId, array $steps, array $req): array
+    {
+        if (!$steps) return [];
+        $userIds = [];
+        foreach ($steps as $s) {
+            foreach (self::resolveStepApproverIds($s, $req) as $uid) { $userIds[$uid] = true; }
+        }
+        if (!$userIds) return [];
+
+        $stepIds = array_map(fn($s) => (int)$s['id'], $steps);
+        $stepPlaceholders = implode(',', array_fill(0, count($stepIds), '?'));
+        $decisions = Database::query(
+            "SELECT actor_id, decision, notes, created_at FROM request_step_decisions WHERE request_id = ? AND step_id IN ($stepPlaceholders)",
+            array_merge([$requestId], $stepIds)
+        )->fetchAll();
+        $decisionByUser = [];
+        foreach ($decisions as $d) { $decisionByUser[(int)$d['actor_id']] = $d; }
+
+        $uids = array_keys($userIds);
+        $userPlaceholders = implode(',', array_fill(0, count($uids), '?'));
+        $users = Database::query("SELECT id, full_name FROM users WHERE id IN ($userPlaceholders)", $uids)->fetchAll();
+
+        $out = [];
+        foreach ($users as $u) {
+            $uid = (int)$u['id'];
+            $d = $decisionByUser[$uid] ?? null;
+            $out[] = [
+                'user_id' => $uid,
+                'full_name' => $u['full_name'],
+                'decision' => $d['decision'] ?? null,
+                'notes' => $d['notes'] ?? null,
+                'decided_at' => $d['created_at'] ?? null,
+            ];
+        }
+        return $out;
     }
 
     private static function notifyRequester(int $requestId, string $title, string $notes, ?string $actionType = null): void
@@ -927,7 +980,9 @@ class WorkflowEngine
     private static function dispatchNotification(array $channels, int $userId, string $title, string $body, ?string $link, ?int $requestId = null, ?string $actionType = null, array $metadata = []): void
     {
         if (!empty($channels['push'])) {
-            Helpers::notify($userId, $title, $body, $link, null, null, [], null, $requestId ? 'request' : null, $requestId, $actionType, $metadata);
+            // pushToo=true يضمن إدراج الإشعار في طابور FCM للموبايل (وليس فقط إشعاراً داخل التطبيق)،
+            // وإلا فإن علم "push" في channels لا يرسل فعلياً أي Push Notification للموبايل.
+            Helpers::notify($userId, $title, $body, $link, null, null, [], null, $requestId ? 'request' : null, $requestId, $actionType, $metadata, true);
         }
         if (!empty($channels['email']) || !empty($channels['whatsapp'])) {
             $u = Database::query(
