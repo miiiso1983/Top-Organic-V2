@@ -142,18 +142,33 @@ class WorkflowTemplateService
         return Database::query("SELECT * FROM approval_steps WHERE id = ?", [$id])->fetch() ?: null;
     }
 
-    public static function addStep(int $templateId, array $data): int
+    private static function nextStepOrder(int $templateId): int
     {
-        $max = (int) Database::query(
+        return 1 + (int) Database::query(
             "SELECT COALESCE(MAX(step_order), 0) AS m FROM approval_steps WHERE template_id = ?",
             [$templateId]
         )->fetch()['m'];
+    }
+
+    /**
+     * إضافة خطوة/صف جديد. إذا مرر $data['step_order'] بقيمة مرحلة قائمة فعلاً لهذا القالب
+     * (أي أنها تشارك خطوة أخرى موجودة بنفس الترتيب)، يُضاف الصف كبديل ضمن نفس المرحلة
+     * (مثال: شرطان مختلفان لنفس المرحلة حسب نوع الطلب — نمط التفرع الشرطي المستخدم فعلاً
+     * في hr_leave: أكثر من صف بنفس step_order بشرط condition_json مختلف). وإلا يُضاف كمرحلة جديدة بعد الأخيرة.
+     */
+    public static function addStep(int $templateId, array $data): int
+    {
+        $explicitOrder = (int)($data['step_order'] ?? 0);
+        $order = ($explicitOrder > 0 && (int) Database::query(
+            "SELECT COUNT(*) FROM approval_steps WHERE template_id = ? AND step_order = ?",
+            [$templateId, $explicitOrder]
+        )->fetchColumn() > 0) ? $explicitOrder : self::nextStepOrder($templateId);
         $approverType = self::normaliseApproverType($data['approver_type'] ?? 'position');
         Database::query(
             "INSERT INTO approval_steps (template_id, step_order, title, approver_type, description, job_title_id, role_id, min_amount, condition_json, can_return_for_edit, is_final, step_type, required_count, notify_channels)
              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             [
-                $templateId, $max + 1,
+                $templateId, $order,
                 (string)($data['title'] ?? ''),
                 $approverType,
                 (string)($data['description'] ?? ''),
@@ -219,14 +234,46 @@ class WorkflowTemplateService
         }
     }
 
-    public static function reorderSteps(int $templateId, array $stepIds): void
+    /**
+     * إعادة ترتيب مراحل الموافقة (السحب والإفلات). $groups مصفوفة من مصفوفات معرّفات
+     * خطوة مرتّبة حسب المرحلة الجديدة المطلوبة مثل [[24,35],[25,26],[27]] — جميع معرّفات
+     * المجموعة الواحدة (مرحلة واحدة ذات بدائل متعددة حسب شرط مختلف، نمط hr_leave) تأخذ
+     * نفس step_order الجديد معاً ليبقى تجميعها كمرحلة واحدة بعد السحب، بدلاً من تفكيكها إلى
+     * مراحل منفصلة متتالية (ما كان سيكسر شرط "أي من هؤلاء المعتمدين" لنفس المرحلة).
+     */
+    public static function reorderSteps(int $templateId, array $groups): void
     {
         $order = 1;
-        foreach ($stepIds as $sid) {
-            Database::query(
-                "UPDATE approval_steps SET step_order = ? WHERE id = ? AND template_id = ?",
-                [$order++, (int)$sid, $templateId]
-            );
+        foreach ($groups as $group) {
+            foreach ((array)$group as $sid) {
+                Database::query(
+                    "UPDATE approval_steps SET step_order = ? WHERE id = ? AND template_id = ?",
+                    [$order, (int)$sid, $templateId]
+                );
+            }
+            $order++;
         }
+    }
+
+    /** نسخ خطوة موجودة وإضافتها في نهاية التسلسل — يسرّع بناء سلاسل موافقات متشابهة (مثل عدة مستويات إدارية متتالية) دون إعادة إدخال كل الحقول يدوياً */
+    public static function duplicateStep(int $id): int
+    {
+        $s = self::getStep($id);
+        if (!$s) return 0;
+        $max = (int) Database::query(
+            "SELECT COALESCE(MAX(step_order), 0) AS m FROM approval_steps WHERE template_id = ?",
+            [$s['template_id']]
+        )->fetch()['m'];
+        Database::query(
+            "INSERT INTO approval_steps (template_id, step_order, title, approver_type, description, job_title_id, role_id, min_amount, condition_json, can_return_for_edit, is_final, step_type, required_count, notify_channels)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            [
+                $s['template_id'], $max + 1,
+                (string)$s['title'] . ' (نسخة)',
+                $s['approver_type'], $s['description'], $s['job_title_id'], $s['role_id'], $s['min_amount'],
+                $s['condition_json'], $s['can_return_for_edit'], $s['is_final'], $s['step_type'], $s['required_count'], $s['notify_channels'],
+            ]
+        );
+        return (int) Database::lastInsertId();
     }
 }

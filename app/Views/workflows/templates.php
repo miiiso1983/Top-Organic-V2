@@ -4,6 +4,14 @@
   <a href="/workflows" class="btn btn-secondary">رجوع</a>
 </div>
 
+<div class="card" style="background:#eff6ff;border:1px solid #bfdbfe">
+  <h4 style="margin-top:0"><i class="fa-solid fa-circle-info"></i> أي أسلوب أناسب لنوع الطلب؟</h4>
+  <p style="margin:4px 0"><strong>البناء السريع (هذه الصفحة):</strong> مناسب لمسار موافقة بسيط أو متفرّع بشروط بسيطة (مثل: موافقة المدير ثم المالية حسب المبلغ) — أضف المراحل ورتّبها بالسحب والإفلات من صفحة "الخطوات" لكل قالب.</p>
+  <p style="margin:4px 0"><strong>المصمّم المرئي (سحب وإفلات كامل):</strong> لمسارات أكثر تعقيداً تحتاج فروعاً شرطية متعددة أو مخططاً مرئياً كاملاً —
+    <a href="/workflow-engine">انتقل إلى المصمّم المرئي لسير العمل <i class="fa-solid fa-arrow-left"></i></a>
+  </p>
+</div>
+
 <div class="card">
   <h3>قالب جديد</h3>
   <form method="post" action="/workflows/templates" class="form-inline">

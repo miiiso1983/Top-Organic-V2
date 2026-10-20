@@ -95,6 +95,28 @@ class WorkflowController extends Controller
         Response::redirect('/workflows/templates/' . $id . '/steps');
     }
 
+    /** تكرار خطوة قائمة (لتسريع بناء سلاسل الموافقة متعددة المستويات) */
+    public function duplicateStep(string $id, string $stepId): void
+    {
+        WorkflowTemplateService::duplicateStep((int)$stepId);
+        $this->flash('success', 'تم نسخ الخطوة — عدّل بياناتها حسب الحاجة');
+        Response::redirect('/workflows/templates/' . $id . '/steps');
+    }
+
+    /** إعادة ترتيب مراحل الموافقة بالسحب والإفلات (AJAX) — groups: [[stepId,...], [stepId,...], ...] مرتّبة حسب
+     * المرحلة الجديدة، مع الحفاظ على تجميع البدائل المتعددة لنفس المرحلة (مثل hr_leave) */
+    public function reorderSteps(string $id): void
+    {
+        $groups = (array) ($this->jsonInput()['groups'] ?? []);
+        if (!$groups) {
+            Response::json(['ok' => false, 'error' => 'ترتيب غير صالح'], 422);
+            return;
+        }
+        $groups = array_map(fn($g) => array_map('intval', (array)$g), $groups);
+        WorkflowTemplateService::reorderSteps((int)$id, $groups);
+        Response::json(['ok' => true]);
+    }
+
     // ===== الطلبات =====
     public function newRequest(): void
     {
@@ -430,6 +452,7 @@ class WorkflowController extends Controller
     private function stepData(): array
     {
         return [
+            'step_order' => (int) $this->input('step_order', 0),
             'title' => (string) $this->input('title'),
             'description' => (string) $this->input('description'),
             'approver_type' => (string) $this->input('approver_type', 'position'),
