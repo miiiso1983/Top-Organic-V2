@@ -421,6 +421,7 @@ $router->post('/accounting/accounts/import', [AccountingController::class, 'impo
 // السلف والتحميلات الشهرية (تسويات مالية مخصصة ضمن المحاسبة — نفس منطق HrController/HrService الحالي)
 $router->get('/accounting/advances', [HrController::class, 'advances'], ['auth', 'perm:accounting.view,hr.view']);
 $router->post('/accounting/advances', [HrController::class, 'storeAdvance'], ['auth', 'perm:accounting.manage,hr.view']);
+$router->get('/accounting/advances/disbursement', [HrController::class, 'advancesDisbursement'], ['auth', 'perm:accounting.view,accounting.manage,payroll.manage']);
 $router->get('/accounting/advances/{id}', [HrController::class, 'showAdvance'], ['auth', 'perm:accounting.view,hr.view']);
 $router->post('/accounting/advances/{id}/decide', [HrController::class, 'decideAdvance'], ['auth', 'perm:accounting.manage,hr.advance.approve,approvals.decide,workflow.decide']);
 $router->post('/accounting/advances/{id}/pay', [HrController::class, 'payAdvance'], ['auth', 'perm:accounting.manage,payroll.manage']);

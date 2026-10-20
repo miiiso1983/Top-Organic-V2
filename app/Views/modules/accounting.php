@@ -114,6 +114,14 @@
   </a>
   <?php endif; ?>
 
+  <?php if (Auth::can('accounting.view') || Auth::can('accounting.manage') || Auth::can('payroll.manage')): ?>
+  <a href="/accounting/advances/disbursement" class="res-card">
+    <div class="icon"><i class="fa-solid fa-money-bill-transfer"></i></div>
+    <div class="title">تسليم السلف</div>
+    <div class="desc">السلف المعتمدة الجاهزة للتسليم</div>
+  </a>
+  <?php endif; ?>
+
   <?php if (Auth::can('accounting.view')): ?>
   <a href="/accounting/loadings" class="res-card">
     <div class="icon"><i class="fa-solid fa-weight-hanging"></i></div>

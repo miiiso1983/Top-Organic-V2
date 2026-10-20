@@ -2179,9 +2179,39 @@ class HrController extends Controller
         Response::redirect('/accounting/advances');
     }
 
+    /**
+     * بطاقة المحاسبة المخصصة بتسليم السلف: تعرض فقط الطلبات التي اكتملت
+     * جميع مراحل الموافقة المطلوبة (status = 'approved' لا تتغير إلا عند اكتمال
+     * المسار بالكامل عبر onAdvanceOutcome) ولم تُسلّم بعد.
+     */
+    public function advancesDisbursement(): void
+    {
+        $advances = Database::query(
+            "SELECT a.*, e.full_name, e.emp_code, e.department, u.full_name AS requested_by_name
+             FROM salary_advances a
+             JOIN employees e ON e.id = a.employee_id
+             LEFT JOIN hr_workflow_links hwl ON hwl.entity_type = 'salary_advance' AND hwl.entity_id = a.id
+             LEFT JOIN requests req ON req.id = hwl.request_id
+             LEFT JOIN users u ON u.id = req.requester_id
+             WHERE a.status = 'approved' AND (a.paid_amount IS NULL OR a.paid_amount = 0)
+             ORDER BY a.approved_at ASC, a.id ASC"
+        )->fetchAll();
+        $bankAccounts = Database::query("SELECT id, name, bank_name, account_no FROM bank_accounts WHERE is_active = 1 ORDER BY name, bank_name")->fetchAll();
+        $cashRegisters = Database::query("SELECT id, name FROM cash_registers WHERE is_active = 1 ORDER BY name")->fetchAll();
+
+        $this->view('accounting/advances_disbursement', [
+            'title' => 'تسليم السلف',
+            'advances' => $advances,
+            'bankAccounts' => $bankAccounts,
+            'cashRegisters' => $cashRegisters,
+        ]);
+    }
+
     public function payAdvance(string $id): void
     {
         $advanceId = (int)$id;
+        $redirectTo = (string)$this->input('redirect_to', '');
+        $defaultRedirect = ($redirectTo !== '' && str_starts_with($redirectTo, '/')) ? $redirectTo : '/accounting/advances/' . $advanceId;
         $advance = Database::query("SELECT * FROM salary_advances WHERE id = ?", [$advanceId])->fetch();
         if (!$advance || $advance['status'] !== 'approved' || (float)$advance['paid_amount'] > 0) {
             Response::redirect('/accounting/advances');
@@ -2254,13 +2284,34 @@ class HrController extends Controller
                 }
             }
 
+            // إشعار داخل التطبيق لمقدم الطلب الأصلي (من جدول الموافقات الديناميكية)؛ نبحث
+            // أولاً عن مقدّم طلب الموافقة (requester_id) ثم نرجع لحساب الموظف نفسه كبديل
+            $requesterUserId = (int)(Database::query(
+                "SELECT req.requester_id FROM hr_workflow_links hwl
+                 JOIN requests req ON req.id = hwl.request_id
+                 WHERE hwl.entity_type = 'salary_advance' AND hwl.entity_id = ?",
+                [$advanceId]
+            )->fetchColumn() ?: 0);
+            if (!$requesterUserId) {
+                $requesterUserId = (int)(Database::query("SELECT user_id FROM employees WHERE id = ?", [(int)$advance['employee_id']])->fetchColumn() ?: 0);
+            }
+            if ($requesterUserId) {
+                Helpers::notify(
+                    $requesterUserId,
+                    'تم تسليم السلفة',
+                    'تم تسليم سلفتك بمبلغ ' . Helpers::money($amount) . ' بنجاح عبر ' . ($paymentMethod === 'bank' ? 'التحويل البنكي' : 'الصندوق النقدي') . '.',
+                    '/accounting/advances/' . $advanceId,
+                    null, null, [], null, 'salary_advance', $advanceId, 'advance_disbursed', [], true
+                );
+            }
+
             Database::commit();
-            $this->flash('success', 'تم صرف السلفة');
+            $this->flash('success', 'تم تسليم السلفة');
         } catch (\Throwable $e) {
             Database::rollBack();
             $this->flash('danger', 'خطأ: ' . $e->getMessage());
         }
-        Response::redirect('/accounting/advances/' . $advanceId);
+        Response::redirect($defaultRedirect);
     }
 
     public function overtime(): void

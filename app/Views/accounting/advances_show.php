@@ -33,7 +33,7 @@
   <div class="flex-between" style="margin-top:15px">
     <a href="/accounting/advances" class="btn btn-light">العودة للقائمة</a>
     <?php if ($advance['status'] === 'approved' && (float)($advance['paid_amount'] ?? 0) <= 0 && (\App\Core\Auth::can('payroll.manage') || \App\Core\Auth::can('accounting.manage'))): ?>
-    <form method="post" action="/accounting/advances/<?= $advance['id'] ?>/pay" onsubmit="return confirm('تأكيد صرف السلفة؟')" id="disburse-form">
+    <form method="post" action="/accounting/advances/<?= $advance['id'] ?>/pay" onsubmit="return confirm('تأكيد تسليم السلفة؟')" id="disburse-form">
       <div class="form-inline" style="gap:10px; margin-bottom:10px">
         <div class="form-row">
           <label>طريقة الدفع</label>
@@ -60,7 +60,7 @@
           </select>
         </div>
       </div>
-      <button class="btn btn-primary">صرف السلفة</button>
+      <button class="btn btn-primary">تسليم السلفة</button>
     </form>
     <?php endif; ?>
   </div>

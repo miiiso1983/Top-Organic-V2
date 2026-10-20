@@ -125,8 +125,8 @@
         <a href="/workflows/requests/<?= $a['workflow_request_id'] ?>" class="btn btn-sm btn-secondary">Workflow</a>
         <?php endif; ?>
         <?php if ($a['status'] === 'approved' && (float)($a['paid_amount'] ?? 0) <= 0 && (\App\Core\Auth::can('payroll.manage') || \App\Core\Auth::can('accounting.manage'))): ?>
-        <form method="post" action="/accounting/advances/<?= $a['id'] ?>/pay" style="display:inline" onsubmit="return confirm('تأكيد صرف السلفة؟')">
-          <button class="btn btn-sm btn-primary">صرف</button>
+        <form method="post" action="/accounting/advances/<?= $a['id'] ?>/pay" style="display:inline" onsubmit="return confirm('تأكيد تسليم السلفة؟')">
+          <button class="btn btn-sm btn-primary">تسليم السلفة</button>
         </form>
         <?php endif; ?>
       </td>
