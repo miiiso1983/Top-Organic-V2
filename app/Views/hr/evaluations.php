@@ -76,10 +76,17 @@
 
 <div class="card">
   <h4>التقييمات</h4>
-  <table>
+  <div class="form-row" style="max-width:420px;margin-bottom:10px">
+    <label><i class="fa-solid fa-magnifying-glass"></i> بحث سريع</label>
+    <input type="text" id="eval-search" placeholder="ابحث باسم الموظف، القسم، أو فترة التقييم..." oninput="filterEvaluations()" autocomplete="off">
+  </div>
+  <table id="eval-table">
     <tr><th>الموظف</th><th>الوظيفة</th><th>القسم</th><th>الفترة</th><th>النوع</th><th>KPI</th><th>المدير</th><th>الإدارة</th><th>النتيجة</th><th>الحالة</th><th>المقيّم</th><th></th></tr>
     <?php foreach ($evaluations as $e): ?>
-    <tr>
+    <tr class="eval-row"
+        data-name="<?= Helpers::e(mb_strtolower($e['full_name'] ?? '')) ?>"
+        data-department="<?= Helpers::e(mb_strtolower($e['department'] ?? '')) ?>"
+        data-period="<?= Helpers::e(mb_strtolower($e['period'] ?? '')) ?>">
       <td><?= Helpers::e($e['full_name']) ?></td>
       <td><?= Helpers::e($e['job_title'] ?? '-') ?></td>
       <td><?= Helpers::e($e['department'] ?? '-') ?></td>
@@ -110,4 +117,22 @@
     <?php endforeach; ?>
     <?php if (!$evaluations): ?><tr><td colspan="12">لا توجد تقييمات</td></tr><?php endif; ?>
   </table>
+  <div id="eval-search-no-results" style="display:none;padding:10px;color:#6b7280">لا توجد نتائج مطابقة لبحثك</div>
+  <script>
+  function filterEvaluations() {
+    var q = (document.getElementById('eval-search').value || '').trim().toLowerCase();
+    var rows = document.querySelectorAll('#eval-table tr.eval-row');
+    var visibleCount = 0;
+    rows.forEach(function (row) {
+      var match = !q
+        || (row.getAttribute('data-name') || '').indexOf(q) !== -1
+        || (row.getAttribute('data-department') || '').indexOf(q) !== -1
+        || (row.getAttribute('data-period') || '').indexOf(q) !== -1;
+      row.style.display = match ? '' : 'none';
+      if (match) visibleCount++;
+    });
+    var noResults = document.getElementById('eval-search-no-results');
+    if (noResults) noResults.style.display = (q && visibleCount === 0) ? '' : 'none';
+  }
+  </script>
 </div>
