@@ -155,8 +155,11 @@ final List<NavItem> kNavItems = [
     path: '/housing',
     label: 'nav_housing',
     icon: Icons.home_work_outlined,
+    // يظهر لموظفي قسم الحراسة (تسكين ذاتي لقسمهم) أو لأي مستخدم يملك صلاحية
+    // hr.housing.manage (مثل المدير المالي ومدير الموارد البشرية) لإدارة سكن كل الموظفين
     customCheck: (auth) =>
-        (auth.user?['department']?.toString().trim() ?? '') == 'الحراسة',
+        (auth.user?['department']?.toString().trim() ?? '') == 'الحراسة' ||
+        auth.can('hr.housing.manage'),
   ),
   NavItem(path: '/profile', label: 'profile_title', icon: Icons.person_outline),
 ];
