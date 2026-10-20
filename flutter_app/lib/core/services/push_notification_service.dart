@@ -62,6 +62,7 @@ class PushNotificationService {
       'الإشعارات',
       description: 'قناة الإشعارات العامة للتطبيق',
       importance: Importance.max,
+      playSound: true,
     );
     await _localNotifications
         .resolvePlatformSpecificImplementation<
@@ -171,9 +172,10 @@ class PushNotificationService {
           channelDescription: 'قناة الإشعارات العامة للتطبيق',
           importance: Importance.max,
           priority: Priority.high,
+          playSound: true,
           icon: android?.smallIcon,
         ),
-        iOS: const DarwinNotificationDetails(),
+        iOS: const DarwinNotificationDetails(presentSound: true),
       ),
       payload: message.data.isNotEmpty ? jsonEncode(message.data) : null,
     );

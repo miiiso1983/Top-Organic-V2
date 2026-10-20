@@ -46,6 +46,13 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- قناة الإشعارات الافتراضية لـ FCM: بدونها تستخدم Firebase قناة احتياطية داخلية بلا
+             تنبيه صوتي لعرض الإشعارات التي تصل والتطبيق في الخلفية/مغلق، مما يجعلها تصل بلا صوت.
+             يجب أن تطابق معرف القناة 'ptt_channel' المنشأ في push_notification_service.dart وفي android.notification.channel_id بطرف الخادم. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="ptt_channel" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
