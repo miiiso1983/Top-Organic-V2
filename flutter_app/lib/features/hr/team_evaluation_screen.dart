@@ -21,6 +21,7 @@ class _TeamEvaluationScreenState extends State<TeamEvaluationScreen> {
   String? _error;
   List<dynamic> _team = [];
   late String _period;
+  int _loadSequence = 0;
 
   @override
   void initState() {
@@ -32,23 +33,23 @@ class _TeamEvaluationScreenState extends State<TeamEvaluationScreen> {
   }
 
   Future<void> _load() async {
+    final sequence = ++_loadSequence;
+    final period = _period;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
       final api = context.read<ApiClient>();
-      final res = await api.get(
-        '/team/evaluations',
-        query: {'period': _period},
-      );
+      final res = await api.get('/team/evaluations', query: {'period': period});
       final body = res.data as Map<String, dynamic>;
+      if (!mounted || sequence != _loadSequence) return;
       setState(() {
         _team = (body['data'] as List?) ?? [];
         _loading = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || sequence != _loadSequence) return;
       final lang = context.read<LocaleProvider>().locale.languageCode;
       setState(() {
         _error =
@@ -183,11 +184,17 @@ class _TeamEvaluationScreenState extends State<TeamEvaluationScreen> {
                   icon: const Icon(Icons.chevron_right),
                   onPressed: () => _changeMonth(-1),
                 ),
-                Text(
-                  _period,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      _period,
+                      textDirection: TextDirection.ltr,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
                   ),
                 ),
                 IconButton(
@@ -222,34 +229,81 @@ class _TeamEvaluationScreenState extends State<TeamEvaluationScreen> {
                           final m = _team[i] as Map<String, dynamic>;
                           final evaluated = m['evaluation_id'] != null;
                           final score = m['total_score'];
+                          final subtitle = [m['job_title'], m['department']]
+                              .map((value) => value?.toString().trim() ?? '')
+                              .where((value) => value.isNotEmpty)
+                              .join(' • ');
                           return Card(
-                            child: ListTile(
-                              title: Text(m['full_name']?.toString() ?? ''),
-                              subtitle: Text(
-                                '${m['job_title'] ?? ''} • ${m['department'] ?? ''}',
-                              ),
-                              trailing: evaluated
-                                  ? Row(
-                                      mainAxisSize: MainAxisSize.min,
+                            clipBehavior: Clip.antiAlias,
+                            child: InkWell(
+                              onTap: () => _showMemberOptions(m),
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    Text(
+                                      m['full_name']?.toString() ?? '',
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.titleMedium,
+                                    ),
+                                    if (subtitle.isNotEmpty) ...[
+                                      const SizedBox(height: 4),
+                                      Text(subtitle),
+                                    ],
+                                    const SizedBox(height: 12),
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      crossAxisAlignment:
+                                          WrapCrossAlignment.center,
                                       children: [
-                                        Chip(
-                                          label: Text(
-                                            '${t('hr_eval_evaluated_prefix')}${score ?? 0}${t('hr_eval_evaluated_suffix')}',
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 8,
                                           ),
-                                          backgroundColor: Colors.green[100],
+                                          decoration: BoxDecoration(
+                                            color: evaluated
+                                                ? Colors.green[100]
+                                                : Colors.orange[100],
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            evaluated
+                                                ? '${t('hr_eval_evaluated_prefix')}${score ?? 0}${t('hr_eval_evaluated_suffix')}'
+                                                : t('hr_eval_pending'),
+                                            style: TextStyle(
+                                              color: evaluated
+                                                  ? Colors.green[900]
+                                                  : Colors.brown[900],
+                                            ),
+                                          ),
                                         ),
-                                        const SizedBox(width: 4),
-                                        TextButton(
-                                          onPressed: () => _openDetail(m),
-                                          child: Text(t('hr_eval_view_button')),
+                                        TextButton.icon(
+                                          onPressed: () => evaluated
+                                              ? _openDetail(m)
+                                              : _openForm(m),
+                                          icon: Icon(
+                                            evaluated
+                                                ? Icons.visibility_outlined
+                                                : Icons.fact_check_outlined,
+                                          ),
+                                          label: Text(
+                                            evaluated
+                                                ? t('hr_eval_view_button')
+                                                : t('hr_team_options_evaluate'),
+                                          ),
                                         ),
                                       ],
-                                    )
-                                  : Chip(
-                                      label: Text(t('hr_eval_pending')),
-                                      backgroundColor: Colors.orange[100],
                                     ),
-                              onTap: () => _showMemberOptions(m),
+                                  ],
+                                ),
+                              ),
                             ),
                           );
                         },
