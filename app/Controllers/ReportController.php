@@ -396,10 +396,11 @@ class ReportController extends Controller
     public function hr(): void
     {
         $today = Database::query(
-            "SELECT e.full_name, e.department,
+            "SELECT e.full_name, COALESCE(report_department.name, e.department) AS department,
                     MIN(CASE WHEN a.check_type='in' THEN a.checked_at END) AS first_in,
                     MAX(CASE WHEN a.check_type='out' THEN a.checked_at END) AS last_out
              FROM employees e
+             LEFT JOIN departments report_department ON report_department.id = e.department_id
              LEFT JOIN attendance a ON a.employee_id = e.id AND DATE(a.checked_at) = CURDATE()
              WHERE e.file_status='open' GROUP BY e.id ORDER BY e.full_name"
         )->fetchAll();

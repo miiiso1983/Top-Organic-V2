@@ -110,8 +110,9 @@ class HrReportService
             $p[] = $filters['period'];
         }
         $rows = Database::query(
-            "SELECT p.*, e.full_name, e.department, e.emp_code
+            "SELECT p.*, e.full_name, COALESCE(report_department.name, e.department) AS department, e.emp_code
              FROM payrolls p JOIN employees e ON e.id = p.employee_id
+             LEFT JOIN departments report_department ON report_department.id = e.department_id
              WHERE $w ORDER BY p.period DESC, e.full_name",
             $p
         )->fetchAll();
@@ -127,7 +128,7 @@ class HrReportService
             $p[] = $filters['period'];
         }
         $rows = Database::query(
-            "SELECT e.department,
+            "SELECT COALESCE(report_department.name, e.department) AS department,
                     COUNT(*) AS employee_count,
                     SUM(p.base_salary) AS total_base_salary,
                     SUM(p.allowances) AS total_allowances,
@@ -146,9 +147,10 @@ class HrReportService
                     SUM(p.rounding_adjustment) AS total_rounding
              FROM payrolls p
              JOIN employees e ON e.id = p.employee_id
+             LEFT JOIN departments report_department ON report_department.id = e.department_id
              WHERE $w
-             GROUP BY e.department
-             ORDER BY e.department",
+             GROUP BY COALESCE(report_department.name, e.department)
+             ORDER BY COALESCE(report_department.name, e.department)",
             $p
         )->fetchAll();
         return [
@@ -176,8 +178,9 @@ class HrReportService
         $w .= ' AND a.adjustment_type = ? AND a.status = "approved"';
         $p[] = $adjType;
         $rows = Database::query(
-            "SELECT a.*, e.full_name, e.department, e.emp_code
+            "SELECT a.*, e.full_name, COALESCE(report_department.name, e.department) AS department, e.emp_code
              FROM hr_adjustments a JOIN employees e ON e.id = a.employee_id
+             LEFT JOIN departments report_department ON report_department.id = e.department_id
              WHERE $w ORDER BY a.effective_date DESC",
             $p
         )->fetchAll();
@@ -192,9 +195,10 @@ class HrReportService
         self::applyPeriodDateRange('a.effective_date', $filters, $w, $p);
         $w .= " AND a.adjustment_type = 'penalty'";
         $rows = Database::query(
-            "SELECT a.*, e.full_name, e.department, e.emp_code, j.title AS job_title
+            "SELECT a.*, e.full_name, COALESCE(report_department.name, e.department) AS department, e.emp_code, j.title AS job_title
              FROM hr_adjustments a
              JOIN employees e ON e.id = a.employee_id
+             LEFT JOIN departments report_department ON report_department.id = e.department_id
              LEFT JOIN jobs j ON j.id = e.job_id
              WHERE $w
              ORDER BY a.effective_date DESC, a.id DESC",
@@ -218,8 +222,9 @@ class HrReportService
             $p[] = (int)$filters['is_long_term'];
         }
         $rows = Database::query(
-            "SELECT sa.*, e.full_name, e.department, e.emp_code
+            "SELECT sa.*, e.full_name, COALESCE(report_department.name, e.department) AS department, e.emp_code
              FROM salary_advances sa JOIN employees e ON e.id = sa.employee_id
+             LEFT JOIN departments report_department ON report_department.id = e.department_id
              WHERE $w ORDER BY sa.created_at DESC",
             $p
         )->fetchAll();
@@ -241,9 +246,10 @@ class HrReportService
         $rangeTo = $to ? date('Y-m-d', strtotime($to . ' +1 day')) : '';
 
         $raw = Database::query(
-            "SELECT e.emp_code, e.full_name, e.department, a.employee_id, a.id,
+            "SELECT e.emp_code, e.full_name, COALESCE(report_department.name, e.department) AS department, a.employee_id, a.id,
                     a.check_type, a.checked_at, a.source
              FROM employees e
+             LEFT JOIN departments report_department ON report_department.id = e.department_id
              JOIN attendance a ON a.employee_id = e.id
              WHERE $w" . ($rangeFrom && $rangeTo ? " AND DATE(a.checked_at) BETWEEN ? AND ?" : "") . "
              ORDER BY e.full_name ASC, a.checked_at ASC, a.id ASC",
@@ -298,7 +304,10 @@ class HrReportService
         $totalDays = (int)date('t', strtotime($periodStart));
 
         $employees = Database::query(
-            "SELECT id, emp_code, full_name, department, shift_id, attendance_type, required_hours FROM employees WHERE $w ORDER BY full_name",
+            "SELECT e.id, e.emp_code, e.full_name, COALESCE(report_department.name, e.department) AS department, e.shift_id, e.attendance_type, e.required_hours
+             FROM employees e
+             LEFT JOIN departments report_department ON report_department.id = e.department_id
+             WHERE $w ORDER BY e.full_name",
             $p
         )->fetchAll();
 
@@ -312,10 +321,11 @@ class HrReportService
         $attRangeFrom = date('Y-m-d', strtotime($periodStart . ' -1 day'));
         $attRangeTo = date('Y-m-d', strtotime($periodEnd . ' +1 day'));
         $attRecords = Database::query(
-            "SELECT e.emp_code, e.full_name, e.department, a.employee_id, a.id,
+            "SELECT e.emp_code, e.full_name, COALESCE(report_department.name, e.department) AS department, a.employee_id, a.id,
                     a.check_type, a.checked_at, a.source
              FROM attendance a
              JOIN employees e ON e.id = a.employee_id
+             LEFT JOIN departments report_department ON report_department.id = e.department_id
              WHERE $w AND DATE(a.checked_at) BETWEEN ? AND ?
              ORDER BY a.employee_id, a.checked_at",
             array_merge($p, [$attRangeFrom, $attRangeTo])
@@ -436,8 +446,9 @@ class HrReportService
         $holidays = $monthlyHoliday ? (int)$monthlyHoliday['days'] : count($holidayData['dates']);
 
         $employees = Database::query(
-            "SELECT e.id, e.emp_code, e.full_name, e.department, e.shift_id, e.base_salary, e.attendance_type, e.required_hours, a.code AS account_code
+            "SELECT e.id, e.emp_code, e.full_name, COALESCE(report_department.name, e.department) AS department, e.shift_id, e.base_salary, e.attendance_type, e.required_hours, a.code AS account_code
              FROM employees e
+             LEFT JOIN departments report_department ON report_department.id = e.department_id
              LEFT JOIN accounts a ON a.id = e.account_id
              WHERE $w ORDER BY e.full_name",
             $p
@@ -447,10 +458,11 @@ class HrReportService
         $attRangeFrom = date('Y-m-d', strtotime($periodStart . ' -1 day'));
         $attRangeTo = date('Y-m-d', strtotime($periodEnd . ' +1 day'));
         $attRecords = Database::query(
-            "SELECT e.emp_code, e.full_name, e.department, a.employee_id, a.id,
+            "SELECT e.emp_code, e.full_name, COALESCE(report_department.name, e.department) AS department, a.employee_id, a.id,
                     a.check_type, a.checked_at, a.source
              FROM attendance a
              JOIN employees e ON e.id = a.employee_id
+             LEFT JOIN departments report_department ON report_department.id = e.department_id
              WHERE $w AND DATE(a.checked_at) BETWEEN ? AND ?
              ORDER BY a.employee_id, a.checked_at",
             array_merge($p, [$attRangeFrom, $attRangeTo])
@@ -649,9 +661,10 @@ class HrReportService
         $rangeTo = date('Y-m-d', strtotime($to . ' +1 day'));
 
         $records = Database::query(
-            "SELECT e.emp_code, e.full_name, e.department, att.employee_id, att.id,
+            "SELECT e.emp_code, e.full_name, COALESCE(report_department.name, e.department) AS department, att.employee_id, att.id,
                     att.check_type, att.checked_at, att.source
              FROM attendance att JOIN employees e ON e.id = att.employee_id
+             LEFT JOIN departments report_department ON report_department.id = e.department_id
              WHERE $w AND DATE(att.checked_at) BETWEEN ? AND ?
              ORDER BY att.employee_id, att.checked_at",
             array_merge($p, [$rangeFrom, $rangeTo])
@@ -705,8 +718,9 @@ class HrReportService
             UNION ALL
             SELECT dt + INTERVAL 1 DAY FROM dates WHERE dt < ?
         )
-        SELECT e.emp_code, e.full_name, e.department, d.dt AS missing_date
+        SELECT e.emp_code, e.full_name, COALESCE(report_department.name, e.department) AS department, d.dt AS missing_date
         FROM employees e
+             LEFT JOIN departments report_department ON report_department.id = e.department_id
         CROSS JOIN dates d
         LEFT JOIN attendance a ON a.employee_id = e.id AND DATE(a.checked_at) = d.dt AND a.check_type = 'in'
         WHERE $w AND e.file_status = 'open' AND d.dt BETWEEN ? AND ? AND a.id IS NULL
@@ -720,9 +734,10 @@ class HrReportService
         [$w, $p] = self::buildFilter($filters, 'status', 'o');
         self::applyPeriodDateRange('o.request_date', $filters, $w, $p);
         $rows = Database::query(
-            "SELECT o.*, e.emp_code, e.full_name, e.department
+            "SELECT o.*, e.emp_code, e.full_name, COALESCE(report_department.name, e.department) AS department
              FROM overtime_requests o
              JOIN employees e ON e.id = o.employee_id
+             LEFT JOIN departments report_department ON report_department.id = e.department_id
              WHERE $w ORDER BY o.request_date DESC, e.full_name",
             $p
         )->fetchAll();
@@ -735,8 +750,9 @@ class HrReportService
         self::applyPeriodDateRange('lr.date_from', $filters, $w, $p);
         $w .= ' AND lr.request_type = "leave"';
         $rows = Database::query(
-            "SELECT lr.*, e.full_name, e.department, e.emp_code
+            "SELECT lr.*, e.full_name, COALESCE(report_department.name, e.department) AS department, e.emp_code
              FROM leave_requests lr JOIN employees e ON e.id = lr.employee_id
+             LEFT JOIN departments report_department ON report_department.id = e.department_id
              WHERE $w ORDER BY lr.date_from DESC",
             $p
         )->fetchAll();
@@ -749,8 +765,9 @@ class HrReportService
         self::applyPeriodDateRange('lr.date_from', $filters, $w, $p);
         $w .= ' AND lr.request_type = "exit"';
         $rows = Database::query(
-            "SELECT lr.*, e.full_name, e.department, e.emp_code
+            "SELECT lr.*, e.full_name, COALESCE(report_department.name, e.department) AS department, e.emp_code
              FROM leave_requests lr JOIN employees e ON e.id = lr.employee_id
+             LEFT JOIN departments report_department ON report_department.id = e.department_id
              WHERE $w ORDER BY lr.date_from DESC",
             $p
         )->fetchAll();
@@ -765,7 +782,7 @@ class HrReportService
         [$w, $p] = self::buildFilter($filters);
         self::applyPeriodDateRange('e.hire_date', $filters, $w, $p);
         $rows = Database::query(
-            "SELECT e.emp_code, e.full_name, e.department, d.name AS department_name, j.title AS job_title,
+            "SELECT e.emp_code, e.full_name, COALESCE(d.name, e.department) AS department, COALESCE(d.name, e.department) AS department_name, j.title AS job_title,
                     e.hire_date, e.base_salary, e.file_status, e.status
              FROM employees e
              LEFT JOIN departments d ON d.id = e.department_id
@@ -790,8 +807,8 @@ class HrReportService
         [$w, $p] = self::buildFilter($filters);
         self::applyPeriodDateRange('r.resignation_date', $filters, $w, $p);
         $rows = Database::query(
-            "SELECT r.*, e.full_name, e.department, e.emp_code, e.status AS employee_status,
-                    d.name AS department_name, j.title AS job_title
+            "SELECT r.*, e.full_name, COALESCE(d.name, e.department) AS department, e.emp_code, e.status AS employee_status,
+                    COALESCE(d.name, e.department) AS department_name, j.title AS job_title
              FROM resignations r
              JOIN employees e ON e.id = r.employee_id
              LEFT JOIN departments d ON d.id = e.department_id
@@ -821,7 +838,7 @@ class HrReportService
         self::applyPeriodDateRange('mar.created_at', $filters, $w, $p);
         $rows = Database::query(
             "SELECT mar.id, mar.created_at AS request_date, mar.request_type, mar.reason, mar.status,
-                    e.full_name, e.emp_code, e.department, e.branch_id,
+                    e.full_name, e.emp_code, COALESCE(report_department.name, e.department) AS department, e.branch_id,
                     COALESCE((
                         SELECT u.full_name FROM request_step_decisions rsd
                         JOIN users u ON u.id = rsd.actor_id
@@ -830,6 +847,7 @@ class HrReportService
                     ), '—') AS approved_by_name
              FROM missing_attendance_requests mar
              JOIN employees e ON e.id = mar.employee_id
+             LEFT JOIN departments report_department ON report_department.id = e.department_id
              WHERE $w
              ORDER BY mar.created_at DESC",
             $p
@@ -1000,8 +1018,9 @@ class HrReportService
         self::applyPeriodDateRange('att.checked_at', $filters, $w, $p);
         $w .= ' AND att.within_geofence = 0';
         $rows = Database::query(
-            "SELECT att.*, e.full_name, e.department, e.emp_code
+            "SELECT att.*, e.full_name, COALESCE(report_department.name, e.department) AS department, e.emp_code
              FROM attendance att JOIN employees e ON e.id = att.employee_id
+             LEFT JOIN departments report_department ON report_department.id = e.department_id
              WHERE $w ORDER BY att.checked_at DESC",
             $p
         )->fetchAll();
@@ -1019,9 +1038,10 @@ class HrReportService
         $rangeTo = date('Y-m-d', strtotime($to . ' +1 day'));
 
         $records = Database::query(
-            "SELECT e.emp_code, e.full_name, e.department, att.employee_id, att.id,
+            "SELECT e.emp_code, e.full_name, COALESCE(report_department.name, e.department) AS department, att.employee_id, att.id,
                     att.check_type, att.checked_at, att.source
              FROM attendance att JOIN employees e ON e.id = att.employee_id
+             LEFT JOIN departments report_department ON report_department.id = e.department_id
              WHERE $w AND DATE(att.checked_at) BETWEEN ? AND ?
              ORDER BY att.employee_id, att.checked_at",
             array_merge($p, [$rangeFrom, $rangeTo])
