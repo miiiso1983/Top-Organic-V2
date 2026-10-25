@@ -205,7 +205,7 @@ class ReportController extends Controller
              JOIN menu_items mi ON mi.id = oi.menu_item_id
              JOIN orders o ON o.id = oi.order_id
              WHERE o.status <> 'cancelled' AND DATE(o.created_at) BETWEEN ? AND ?
-             GROUP BY mi.id ORDER BY qty DESC LIMIT 10",
+             GROUP BY mi.id ORDER BY qty DESC",
             [$from, $to]
         )->fetchAll();
         $daily = Database::query(
@@ -293,7 +293,7 @@ class ReportController extends Controller
             "SELECT w.*, i.name AS item_name FROM waste_log w
              JOIN items i ON i.id = w.item_id
              WHERE DATE_FORMAT(w.created_at,'%Y-%m') = DATE_FORMAT(CURDATE(),'%Y-%m')
-             ORDER BY w.id DESC LIMIT 50"
+             ORDER BY w.id DESC"
         )->fetchAll();
         $expiring = Database::query(
             "SELECT m.expiry_date, i.name, SUM(m.qty) AS qty

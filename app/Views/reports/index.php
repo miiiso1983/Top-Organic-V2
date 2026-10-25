@@ -236,8 +236,9 @@ $movementLabels = ['in'=>'إدخال','out'=>'إخراج','transfer_in'=>'منا
     $table.data('dt-initialized', true);
     $table.DataTable({
       autoWidth: false,
-      pageLength: 10,
-      lengthMenu: [[5,10,25,50,-1],[5,10,25,50,'الكل']],
+      pageLength: 25,
+      stateSave: true,
+      lengthMenu: [[10,25,50,100,250,500,-1],[10,25,50,100,250,500,'الكل']],
       language: { search: 'بحث:', lengthMenu: 'عرض _MENU_ سجل', info: 'من _START_ إلى _END_ من _TOTAL_', infoEmpty: 'لا توجد سجلات', zeroRecords: 'لا توجد نتائج', paginate: { first: 'الأول', last: 'الأخير', next: 'التالي', previous: 'السابق' } }
     });
   }

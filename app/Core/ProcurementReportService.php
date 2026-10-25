@@ -51,7 +51,7 @@ class ProcurementReportService
                 . self::idClause('mr.department_id', $f['department_id'])
                 . self::likeClause('mr.request_no', $f['q'])
                 . ($f['status'] ? " AND mr.status = '{$f['status']}' " : '')
-                . " ORDER BY mr.id DESC LIMIT 1000";
+                . " ORDER BY mr.id DESC";
         return Database::query($sql)->fetchAll();
     }
 
@@ -66,7 +66,7 @@ class ProcurementReportService
                 . self::dateClause('pr.created_at', $f)
                 . self::likeClause('pr.request_no', $f['q'])
                 . ($f['status'] ? " AND pr.status = '{$f['status']}' " : '')
-                . " ORDER BY pr.id DESC LIMIT 1000";
+                . " ORDER BY pr.id DESC";
         return Database::query($sql)->fetchAll();
     }
 
@@ -85,7 +85,7 @@ class ProcurementReportService
                 . self::idClause('t.from_warehouse_id', $f['branch_id'])
                 . self::idClause('t.to_warehouse_id', $f['department_id'])
                 . self::likeClause('t.transfer_no', $f['q'])
-                . " ORDER BY t.id DESC LIMIT 1000";
+                . " ORDER BY t.id DESC";
         return Database::query($sql)->fetchAll();
     }
 
@@ -102,7 +102,7 @@ class ProcurementReportService
                 . self::idClause('po.supplier_id', $f['supplier_id'])
                 . self::likeClause('po.po_no', $f['q'])
                 . ($f['status'] ? " AND po.status = '{$f['status']}' " : '')
-                . " ORDER BY po.id DESC LIMIT 1000";
+                . " ORDER BY po.id DESC";
         return Database::query($sql)->fetchAll();
     }
 
@@ -129,7 +129,7 @@ class ProcurementReportService
                 . self::dateClause('mr.created_at', $f)
                 . self::idClause('mr.branch_id', $f['branch_id'])
                 . self::idClause('mri.item_id', $f['item_id'])
-                . " GROUP BY i.id ORDER BY total_qty DESC LIMIT 50";
+                . " GROUP BY i.id ORDER BY total_qty DESC";
         return Database::query($sql)->fetchAll();
     }
 
@@ -184,7 +184,7 @@ class ProcurementReportService
                 . self::dateClause('gr.created_at', $f)
                 . self::idClause('gri.item_id', $f['item_id'])
                 . " AND (COALESCE(gri.variance_qty, poi.qty - gri.qty, 0) != 0 OR COALESCE(gri.damaged_qty, 0) != 0)
-                ORDER BY gr.id DESC LIMIT 1000";
+                ORDER BY gr.id DESC";
         return Database::query($sql)->fetchAll();
     }
 
@@ -200,7 +200,7 @@ class ProcurementReportService
                 LEFT JOIN goods_receipts gr ON gr.po_id = po.id
                 WHERE 1=1 "
                 . self::dateClause('mr.created_at', $f)
-                . " ORDER BY mr.id DESC LIMIT 1000";
+                . " ORDER BY mr.id DESC";
         return Database::query($sql)->fetchAll();
     }
 
@@ -224,7 +224,7 @@ class ProcurementReportService
                 . self::idClause('gr.warehouse_id', $f['branch_id'])
                 . self::idClause('gri.item_id', $f['item_id'])
                 . self::likeClause('gr.receipt_no', $f['q'])
-                . " ORDER BY gr.id DESC LIMIT 1000";
+                . " ORDER BY gr.id DESC";
         return Database::query($sql)->fetchAll();
     }
 
@@ -241,7 +241,7 @@ class ProcurementReportService
                 . self::idClause('t.from_warehouse_id', $f['branch_id'])
                 . self::idClause('t.to_warehouse_id', $f['department_id'])
                 . self::likeClause('t.transfer_no', $f['q'])
-                . " ORDER BY t.id DESC LIMIT 1000";
+                . " ORDER BY t.id DESC";
         return Database::query($sql)->fetchAll();
     }
 
@@ -255,7 +255,7 @@ class ProcurementReportService
                 WHERE 1=1 "
                 . self::dateClause('po.created_at', $f)
                 . self::idClause('po.supplier_id', $f['supplier_id'])
-                . " GROUP BY po.id ORDER BY po.id DESC LIMIT 1000";
+                . " GROUP BY po.id ORDER BY po.id DESC";
         return Database::query($sql)->fetchAll();
     }
 
@@ -272,7 +272,7 @@ class ProcurementReportService
                 . self::dateClause('po.created_at', $f)
                 . self::idClause('poi.item_id', $f['item_id'])
                 . self::idClause('po.supplier_id', $f['supplier_id'])
-                . " GROUP BY poi.item_id, po.supplier_id ORDER BY i.name, avg_price DESC LIMIT 1000";
+                . " GROUP BY poi.item_id, po.supplier_id ORDER BY i.name, avg_price DESC";
         return Database::query($sql)->fetchAll();
     }
 
@@ -288,7 +288,7 @@ class ProcurementReportService
                 . self::dateClause('mr.created_at', $f)
                 . self::idClause('mr.department_id', $f['department_id'])
                 . self::idClause('mri.item_id', $f['item_id'])
-                . " GROUP BY d.id, i.id ORDER BY total_qty DESC LIMIT 1000";
+                . " GROUP BY d.id, i.id ORDER BY total_qty DESC";
         return Database::query($sql)->fetchAll();
     }
 
@@ -302,7 +302,7 @@ class ProcurementReportService
                 WHERE i.is_active = 1 "
                 . self::dateClause('i.created_at', $f)
                 . self::likeClause('i.name', $f['q'])
-                . " ORDER BY i.id DESC LIMIT 1000";
+                . " ORDER BY i.id DESC";
         return Database::query($sql)->fetchAll();
     }
 
@@ -318,7 +318,7 @@ class ProcurementReportService
                 . self::dateClause('r.created_at', $f)
                 . self::likeClause('r.entity_type', $f['q'])
                 . ($f['status'] ? " AND r.status = '{$f['status']}' " : '')
-                . " ORDER BY r.id DESC LIMIT 1000";
+                . " ORDER BY r.id DESC";
         return Database::query($sql)->fetchAll();
     }
 
@@ -333,7 +333,7 @@ class ProcurementReportService
                 . self::dateClause('p.created_at', $f)
                 . self::likeClause('p.production_no', $f['q'])
                 . ($f['status'] ? " AND p.status = '{$f['status']}' " : '')
-                . " ORDER BY p.id DESC LIMIT 1000";
+                . " ORDER BY p.id DESC";
         return Database::query($sql)->fetchAll();
     }
 

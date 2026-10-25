@@ -141,7 +141,7 @@ class ItemCardController extends Controller
             Response::abort(404, 'الصنف غير موجود');
         }
         $item['card_no'] = ItemCard::ensureCardNo($itemId);
-        $movements = array_slice(ItemCard::movements($itemId), 0, 10);
+        $movements = ItemCard::movements($itemId);
         ExportHelper::itemCardPdf('item_card_' . $item['card_no'] . '.pdf', [
             'item' => $item,
             'movements' => $movements,

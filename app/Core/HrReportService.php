@@ -197,8 +197,7 @@ class HrReportService
              JOIN employees e ON e.id = a.employee_id
              LEFT JOIN jobs j ON j.id = e.job_id
              WHERE $w
-             ORDER BY a.effective_date DESC, a.id DESC
-             LIMIT 5000",
+             ORDER BY a.effective_date DESC, a.id DESC",
             $p
         )->fetchAll();
         return [
@@ -247,8 +246,7 @@ class HrReportService
              FROM employees e
              JOIN attendance a ON a.employee_id = e.id
              WHERE $w" . ($rangeFrom && $rangeTo ? " AND DATE(a.checked_at) BETWEEN ? AND ?" : "") . "
-             ORDER BY e.full_name ASC, a.checked_at ASC
-             LIMIT 5000",
+             ORDER BY e.full_name ASC, a.checked_at ASC, a.id ASC",
             array_merge($p, ($rangeFrom && $rangeTo ? [$rangeFrom, $rangeTo] : []))
         )->fetchAll();
 
@@ -300,7 +298,7 @@ class HrReportService
         $totalDays = (int)date('t', strtotime($periodStart));
 
         $employees = Database::query(
-            "SELECT id, emp_code, full_name, department, shift_id, attendance_type, required_hours FROM employees WHERE $w ORDER BY full_name LIMIT 5000",
+            "SELECT id, emp_code, full_name, department, shift_id, attendance_type, required_hours FROM employees WHERE $w ORDER BY full_name",
             $p
         )->fetchAll();
 
@@ -441,7 +439,7 @@ class HrReportService
             "SELECT e.id, e.emp_code, e.full_name, e.department, e.shift_id, e.base_salary, e.attendance_type, e.required_hours, a.code AS account_code
              FROM employees e
              LEFT JOIN accounts a ON a.id = e.account_id
-             WHERE $w ORDER BY e.full_name LIMIT 5000",
+             WHERE $w ORDER BY e.full_name",
             $p
         )->fetchAll();
 
@@ -725,7 +723,7 @@ class HrReportService
             "SELECT o.*, e.emp_code, e.full_name, e.department
              FROM overtime_requests o
              JOIN employees e ON e.id = o.employee_id
-             WHERE $w ORDER BY o.request_date DESC, e.full_name LIMIT 5000",
+             WHERE $w ORDER BY o.request_date DESC, e.full_name",
             $p
         )->fetchAll();
         return ['title' => 'تقرير العمل الإضافي', 'columns' => ['emp_code','full_name','department','request_date','hours','status','biometric_match'], 'headers' => ['الكود','الموظف','القسم','التاريخ','الساعات','الحالة','مطابقة البصمة'], 'rows' => $rows];
@@ -1004,7 +1002,7 @@ class HrReportService
         $rows = Database::query(
             "SELECT att.*, e.full_name, e.department, e.emp_code
              FROM attendance att JOIN employees e ON e.id = att.employee_id
-             WHERE $w ORDER BY att.checked_at DESC LIMIT 5000",
+             WHERE $w ORDER BY att.checked_at DESC",
             $p
         )->fetchAll();
         return ['title' => 'تقرير مراقبة المواقع', 'columns' => ['emp_code','full_name','department','checked_at','check_type','within_geofence','longitude','latitude'], 'headers' => ['الكود','الموظف','القسم','التاريخ','النوع','خارج النطاق','خط الطول','خط العرض'], 'rows' => $rows];

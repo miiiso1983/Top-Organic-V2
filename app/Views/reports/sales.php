@@ -31,7 +31,7 @@
 </div>
 
 <div class="card">
-  <h3>الأصناف الأكثر مبيعاً (Top 10)</h3>
+  <h3>الأصناف الأكثر مبيعاً</h3>
   <table>
     <tr><th>الصنف</th><th>الكمية</th><th>الإيراد</th></tr>
     <?php foreach ($topItems as $i): ?>

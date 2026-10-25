@@ -86,8 +86,7 @@ class HrController extends Controller
              LEFT JOIN jobs j ON j.id = e.job_id
              LEFT JOIN employees m ON m.id = e.manager_id
              $whereSql
-             ORDER BY $orderColumn $sortDir
-             LIMIT 1000",
+             ORDER BY $orderColumn $sortDir",
             array_merge(
                 [$salaryPeriod, $salaryPeriodStart, $salaryPeriodEnd, $salaryPeriodStart, $salaryPeriodEnd, $salaryPeriod, $salaryPeriodStart, $salaryPeriodEnd],
                 $params
@@ -5338,7 +5337,7 @@ class HrController extends Controller
             "SELECT t.*, e.full_name AS assignee, u.full_name AS creator FROM tasks t
              JOIN employees e ON e.id = t.assigned_to
              LEFT JOIN users u ON u.id = t.created_by
-             ORDER BY t.id DESC LIMIT 100"
+             ORDER BY t.id DESC"
         )->fetchAll();
         $employees = Database::query("SELECT id, full_name FROM employees WHERE file_status='open' ORDER BY full_name")->fetchAll();
 
@@ -7386,8 +7385,7 @@ class HrController extends Controller
              LEFT JOIN cost_centers cc ON cc.id = e.cost_center_id
              LEFT JOIN accounts acc ON acc.id = e.account_id
              $whereSql
-             ORDER BY $orderColumn $sortDir
-             LIMIT 5000",
+             ORDER BY $orderColumn $sortDir",
             $params
         )->fetchAll();
 
@@ -7499,7 +7497,7 @@ class HrController extends Controller
             "SELECT t.*, e.full_name AS assignee, u.full_name AS creator FROM tasks t
              JOIN employees e ON e.id = t.assigned_to
              LEFT JOIN users u ON u.id = t.created_by
-             ORDER BY t.id DESC LIMIT 100"
+             ORDER BY t.id DESC"
         )->fetchAll();
         $statusLabels = ['open'=>'مفتوحة','in_progress'=>'قيد التنفيذ','done'=>'منجزة','cancelled'=>'ملغاة'];
         $rows = [];

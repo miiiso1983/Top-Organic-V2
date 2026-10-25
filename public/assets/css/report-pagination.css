@@ -1,0 +1,11 @@
+.report-pagination { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; padding:12px 0; direction:rtl; font-size:14px; }
+.report-pagination label { display:inline-flex; align-items:center; gap:8px; margin:0; }
+.report-pagination select, .report-pagination input { width:auto; min-height:36px; margin:0; border:1px solid #cbd5e1; border-radius:6px; padding:5px 9px; background:var(--card-bg,#fff); color:inherit; font:inherit; }
+.report-pagination .report-page-number { width:78px; }
+.report-pagination-bottom { justify-content:center; border-top:1px solid #e2e8f0; margin-bottom:16px; }
+.report-pagination button:disabled { opacity:.45; cursor:not-allowed; }
+.report-page-info { color:inherit; }
+.report-page-hidden { display:none !important; }
+.dark .report-pagination select, .dark .report-pagination input { background:#1e293b; border-color:#475569; color:#f8fafc; }
+@media (max-width:600px) { .report-pagination { gap:8px; font-size:13px; } .report-pagination-bottom .btn { padding:6px 9px; } }
+@media print { .report-pagination { display:none !important; } tr.report-page-hidden { display:table-row !important; } }

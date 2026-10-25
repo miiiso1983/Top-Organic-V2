@@ -16,6 +16,10 @@ abstract class Controller
         ob_start();
         require $viewFile;
         $content = ob_get_clean();
+        if (preg_match('~(?:^|/)(?:reports?(?:/|$)|report_[^/]+$)~', $viewTemplate)) {
+            $content .= '<link rel="stylesheet" href="/assets/css/report-pagination.css?v=20261025-1">'
+                . '<script src="/assets/js/report-pagination.js?v=20261025-1" defer></script>';
+        }
         ob_start();
         require BASE_PATH . '/app/Views/layouts/main.php';
         $output = ob_get_clean();

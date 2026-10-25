@@ -120,7 +120,7 @@ class ReservationReportService
         return Database::query($sql, $params)->fetchAll();
     }
 
-    public static function topCustomers(string $from, string $to, ?int $branchId = null, int $limit = 10): array
+    public static function topCustomers(string $from, string $to, ?int $branchId = null): array
     {
         [$base, $params] = self::baseSql($from, $to, $branchId);
         return Database::query(
@@ -128,7 +128,7 @@ class ReservationReportService
                     COALESCE(SUM(guests),0) AS guests,
                     COUNT(CASE WHEN r.status='seated' THEN 1 END) AS seated_visits
              " . $base . " GROUP BY r.customer_phone, r.customer_name HAVING r.customer_phone IS NOT NULL
-             ORDER BY visits DESC LIMIT " . (int)$limit,
+             ORDER BY visits DESC",
             $params
         )->fetchAll();
     }
