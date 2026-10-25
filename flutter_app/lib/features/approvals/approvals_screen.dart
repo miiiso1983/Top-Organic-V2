@@ -1,3 +1,4 @@
+import 'advance_disbursements_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -519,6 +520,19 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
       appBar: AppBar(
         title: Text(t('approvals_title')),
         actions: [
+          if (auth.can('accounting.manage') || auth.can('payroll.manage'))
+            IconButton(
+              icon: const Icon(Icons.payments_outlined),
+              tooltip: context.read<LocaleProvider>().isArabic
+                  ? 'اعتماد وتسليم السلف'
+                  : 'Authorize and pay advances',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const AdvanceDisbursementsScreen(),
+                ),
+              ),
+            ),
+
           if (canCreate) ...[
             IconButton(
               icon: const Icon(Icons.add_circle, size: 28),

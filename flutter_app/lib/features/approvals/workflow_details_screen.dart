@@ -1,3 +1,4 @@
+import 'advance_snapshot_card.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:dio/dio.dart';
@@ -199,6 +200,38 @@ class _WorkflowDetailsScreenState extends State<WorkflowDetailsScreen> {
                         children: [
                           _buildHeaderCard(),
                           const SizedBox(height: 12),
+                          if (_request?['advance_limit'] is Map)
+                            AdvanceSnapshotCard(
+                              snapshot: Map<String, dynamic>.from(
+                                _request!['advance_limit'],
+                              ),
+                              code: _request!['template_code'],
+                            ),
+                          if (_request?['advance_payment'] is Map)
+                            ListTile(
+                              leading: const Icon(Icons.payments_outlined),
+                              title: Text(
+                                _request!['advance_payment']['paid_at'] != null
+                                    ? (context.read<LocaleProvider>().isArabic
+                                          ? 'تم تسليم السلفة'
+                                          : 'Advance paid')
+                                    : _request!['advance_payment']['accountant_approved_at'] !=
+                                          null
+                                    ? (context.read<LocaleProvider>().isArabic
+                                          ? 'معتمدة للصرف — بانتظار التسليم'
+                                          : 'Authorized — awaiting payment')
+                                    : (context.read<LocaleProvider>().isArabic
+                                          ? 'لم يتم الصرف'
+                                          : 'Not paid'),
+                              ),
+                              subtitle:
+                                  _request!['advance_payment']['paid_at'] !=
+                                      null
+                                  ? Text(
+                                      '${_request!['advance_payment']['paid_at']}',
+                                    )
+                                  : null,
+                            ),
                           _buildFieldsCard(),
                           const SizedBox(height: 12),
                           _buildHistoryCard(),
@@ -339,7 +372,8 @@ class _WorkflowDetailsScreenState extends State<WorkflowDetailsScreen> {
     // أي قيم إضافية في data غير معرفة في القالب (مثل employee_name)
     for (final entry in data.entries) {
       if (shownKeys.contains(entry.key)) continue;
-      if (entry.key.startsWith('_')) continue;
+      if (entry.key.startsWith('_') || entry.key == 'advance_snapshot')
+        continue;
       final v = entry.value;
       if (v == null || v.toString().isEmpty) continue;
       rows.add(_infoRow(entry.key, v.toString()));

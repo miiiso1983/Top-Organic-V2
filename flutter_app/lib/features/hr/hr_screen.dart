@@ -298,10 +298,7 @@ class _HrScreenState extends State<HrScreen> {
                     ),
                   const SizedBox(height: 16),
                   if (context.select(
-                    (AuthProvider a) =>
-                        a.can('hr.manage') ||
-                        a.hasRole('موارد بشرية') ||
-                        a.hasRole('hr'),
+                    (AuthProvider a) => a.canManageAdvances,
                   )) ...[
                     ElevatedButton.icon(
                       onPressed: () => context.push('/hr/exceptional-advance'),

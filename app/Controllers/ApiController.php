@@ -3132,6 +3132,65 @@ class ApiController extends Controller
 
     // ===================== سير العمل والموافقات (Workflow) =====================
 
+    /** Accountant/cash desk operations share the same transaction implementation as web. */
+    public function advanceDisbursements(): void
+    {
+        if (!Auth::can('accounting.manage') && !Auth::can('payroll.manage')) {
+            Response::json(['ok'=>false,'error'=>'ليس لديك صلاحية صرف السلف'],403); return;
+        }
+        $page = max(1, (int)($_GET['page'] ?? 1)); $size = 30; $offset = ($page-1)*$size;
+        $rows = Database::query("SELECT a.id,a.amount,a.advance_type,a.status,a.accountant_approved_at,a.paid_at,a.payment_method,
+            e.full_name,e.emp_code,l.request_id
+            FROM salary_advances a JOIN employees e ON e.id=a.employee_id
+            JOIN hr_workflow_links l ON l.entity_type='salary_advance' AND l.entity_id=a.id
+            WHERE a.status IN ('approved','paid','settled') ORDER BY a.id DESC LIMIT $size OFFSET $offset")->fetchAll();
+        foreach ($rows as &$row) {
+            $row['can_authorize'] = $row['status']==='approved' && empty($row['accountant_approved_at']) && Auth::can('accounting.manage');
+            $row['can_pay'] = $row['status']==='approved' && !empty($row['accountant_approved_at']) && empty($row['paid_at']);
+        } unset($row);
+        Response::json(['ok'=>true,'data'=>['advances'=>$rows,'page'=>$page,'has_more'=>count($rows)===$size,
+            'cash_registers'=>Database::query('SELECT id,name FROM cash_registers WHERE is_active=1 ORDER BY name')->fetchAll(),
+            'bank_accounts'=>Database::query('SELECT id,name FROM bank_accounts WHERE is_active=1 ORDER BY name')->fetchAll()]]);
+    }
+
+    public function advanceReceipt(string $id): void
+    {
+        if (!Auth::can('accounting.manage') && !Auth::can('payroll.manage')) {
+            Response::json(['ok'=>false,'error'=>'ليس لديك صلاحية عرض سند الصرف'],403); return;
+        }
+        $receipt=Database::query("SELECT a.id,a.amount,a.reason,a.paid_at,a.payment_method,
+            e.full_name,e.emp_code,u.full_name AS paid_by_name FROM salary_advances a
+            JOIN employees e ON e.id=a.employee_id LEFT JOIN users u ON u.id=a.paid_by
+            WHERE a.id=? AND a.status IN ('paid','settled') AND a.paid_at IS NOT NULL AND a.paid_by IS NOT NULL",[(int)$id])->fetch();
+        if (!$receipt) { Response::json(['ok'=>false,'error'=>'السند متاح بعد التسليم الفعلي فقط'],404); return; }
+        Response::json(['ok'=>true,'data'=>$receipt]);
+    }
+
+    public function advanceAuthorize(string $id): void
+    {
+        (new HrController())->approveAdvanceForPayment($id, true);
+    }
+
+    public function advancePay(string $id): void
+    {
+        if (!Auth::can('accounting.manage') && !Auth::can('payroll.manage')) {
+            Response::json(['ok'=>false,'error'=>'ليس لديك صلاحية صرف السلف'],403); return;
+        }
+        $body = $this->body();
+        $method = (string)($body['payment_method'] ?? '');
+        $accountId = (int)($body[$method === 'bank' ? 'bank_account_id' : 'cash_register_id'] ?? 0);
+        if (!in_array($method,['cash','bank'],true) || $accountId < 1) {
+            Response::json(['ok'=>false,'error'=>'اختر طريقة الدفع والصندوق أو الحساب'],422); return;
+        }
+        $table = $method === 'bank' ? 'bank_accounts' : 'cash_registers';
+        if (!Database::query("SELECT id FROM $table WHERE id=? AND is_active=1",[$accountId])->fetchColumn()) {
+            Response::json(['ok'=>false,'error'=>'الحساب المختار غير متاح'],422); return;
+        }
+        $previousPost = $_POST;
+        $_POST = array_intersect_key($body, array_flip(['payment_method','bank_account_id','cash_register_id']));
+        try { (new HrController())->payAdvance($id, true); } finally { $_POST = $previousPost; }
+    }
+
     public function workflowTemplates(): void
     {
         $user = ApiAuth::user();
@@ -3150,6 +3209,8 @@ class ApiController extends Controller
         foreach ($allActive as $t) {
             $code = $t['code'] ?? '';
             $id = (int)$t['id'];
+            if (in_array($code, ['hr_exceptional_advance','hr_long_advance'], true) && !\App\Core\AdvancePolicyService::canManageHr((int)$user['id'])) continue;
+            if ($code === 'hr_advance' && !WorkflowEngine::getUserWithPosition((int)$user['id'])['employee_id']) continue;
             if (in_array($code, $alwaysVisibleCodes, true) || isset($allowedIds[$id])) {
                 $templates[] = $t;
             }
@@ -3169,7 +3230,7 @@ class ApiController extends Controller
         $user = ApiAuth::user();
         $roleId = (int)($user['role_id'] ?? 0);
         $template = WorkflowTemplateService::getTemplate((int)$id);
-        if (!$template) {
+        if (!$template || empty($template['is_active'])) {
             Response::json(['ok' => false, 'error' => 'القالب غير موجود'], 404);
             return;
         }
@@ -3180,6 +3241,9 @@ class ApiController extends Controller
             return;
         }
         $code = $template['code'] ?? '';
+        if (in_array($code, ['hr_exceptional_advance','hr_long_advance'], true) && !\App\Core\AdvancePolicyService::canManageHr((int)$user['id'])) {
+            Response::json(['ok'=>false,'error'=>'تقديم هذا الطلب للموارد البشرية فقط'],403); return;
+        }
         // الإجازة (hr_leave) والسلفة (hr_advance) ونسيان البصمة (hr_missing_attendance) متاحة دائمًا للموظفين في الموبايل
         $alwaysCreatable = in_array($code, ['hr_leave', 'hr_advance', 'hr_missing_attendance'], true);
         if (!$alwaysCreatable && !WorkflowEngine::canCreate((int)$id, $roleId)) {
@@ -3188,6 +3252,9 @@ class ApiController extends Controller
         }
         if ($template['code'] === 'deduction_request' || $template['code'] === 'suspension_request') {
             $template['employees'] = WorkflowEngine::subordinateEmployees((int)$user['id']);
+        } elseif ($code === 'hr_advance') {
+            $template['employees'] = Database::query("SELECT id,full_name,emp_code FROM employees WHERE user_id=? AND status='active'", [(int)$user['id']])->fetchAll();
+            if (!$template['employees']) { Response::json(['ok'=>false,'error'=>'الحساب غير مرتبط بموظف نشط'],403); return; }
         } else {
             $template['employees'] = Database::query(
                 "SELECT id, full_name, emp_code FROM employees WHERE status = 'active' ORDER BY full_name"
@@ -3240,6 +3307,14 @@ class ApiController extends Controller
             return;
         }
         $data = array_merge((array)($b['data'] ?? []), (array)($b['fields'] ?? []));
+        // Older mobile versions used the exceptional template for both types.
+        if (($template['code'] ?? '') === 'hr_exceptional_advance' && in_array($data['advance_type'] ?? '', ['long','طويلة الأجل'], true)) {
+            $target = Database::query("SELECT id FROM approval_templates WHERE code='hr_long_advance' AND is_active=1")->fetchColumn();
+            if (!$target) { Response::json(['ok'=>false,'error'=>'قالب السلفة طويلة الأجل غير متاح'],422); return; }
+            $templateId = (int)$target;
+            $template = WorkflowTemplateService::getTemplate($templateId);
+        }
+        if (empty($template['is_active'])) { Response::json(['ok'=>false,'error'=>'القالب غير متاح'],403); return; }
         $data['title'] = (string)($b['title'] ?? ($template['name'] . ' - ' . date('Y-m-d')));
 
         foreach ($template['fields'] as $f) {
@@ -3522,10 +3597,28 @@ class ApiController extends Controller
     {
         $req = WorkflowEngine::getRequest((int)$id);
         if (!$req) { Response::json(['ok' => false, 'error' => 'الطلب غير موجود'], 404); return; }
-        $step = $req['status'] === 'pending' ? WorkflowEngine::resolveStep((int)$req['template_id'], (int)$req['current_step'], (int)$id) : null;
-        $canDecide = $step && WorkflowEngine::userCanDecideStep($step, $req);
+        $canDecide = false;
+        if ($req['status'] === 'pending') {
+            if (!empty($req['workflow_version_id'])) {
+                $canDecide = \App\Core\Workflow\Engine::userHasPendingTask((int)$id, (int)ApiAuth::id());
+            } else {
+                foreach (WorkflowEngine::resolveSteps((int)$req['template_id'], (int)$req['current_step'], (int)$id) as $step) {
+                    if (WorkflowEngine::userCanDecideStep($step, $req)) { $canDecide = true; break; }
+                }
+            }
+        }
+        $isAdvance = \App\Core\AdvancePolicyService::isAdvance($req['template_code']);
+        if (!$isAdvance && !Auth::canAny(['workflow.create','workflow.decide','approvals.decide','mobile.approvals'])) {
+            Response::json(['ok'=>false,'error'=>'ليس لديك صلاحية عرض هذا الطلب'],403); return;
+        }
+        if ($isAdvance && (int)$req['requester_id'] !== (int)ApiAuth::id() && !$canDecide
+            && !\App\Core\AdvancePolicyService::canViewFinancial((int)$req['requester_employee_id'], (int)ApiAuth::id())) {
+            Response::json(['ok'=>false,'error'=>'ليس لديك صلاحية عرض هذا الطلب'],403); return;
+        }
         if ($req['template_code'] === 'deduction_request' || $req['template_code'] === 'suspension_request') {
             $req['employees'] = WorkflowEngine::subordinateEmployees(ApiAuth::id());
+        } elseif ($isAdvance) {
+            $req['employees'] = Database::query('SELECT id,full_name,emp_code FROM employees WHERE id=?', [(int)$req['requester_employee_id']])->fetchAll();
         } else {
             $req['employees'] = Database::query(
                 "SELECT id, full_name, emp_code FROM employees WHERE status = 'active' ORDER BY full_name"
@@ -3537,6 +3630,8 @@ class ApiController extends Controller
             )->fetchAll();
         }
         if (\App\Core\AdvancePolicyService::isAdvance($req['template_code'])) {
+            $req['advance_payment'] = Database::query("SELECT a.status,a.paid_at,a.payment_method,a.accountant_approved_at FROM salary_advances a
+                JOIN hr_workflow_links l ON l.entity_type='salary_advance' AND l.entity_id=a.id WHERE l.request_id=?",[(int)$id])->fetch() ?: null;
             $req['advance_limit'] = \App\Core\AdvancePolicyService::snapshot((int)$req['requester_employee_id'], (int)$req['id']);
         }
         // إثراء بيانات مقدم الطلب (القسم والمسمى الوظيفي) لشاشة التفاصيل
@@ -3649,6 +3744,13 @@ class ApiController extends Controller
     public function workflowComment(string $id): void
     {
         $b = $this->body();
+        $req=WorkflowEngine::getRequest((int)$id);
+        if (!$req) { Response::json(['ok'=>false,'error'=>'الطلب غير موجود'],404); return; }
+        if (\App\Core\AdvancePolicyService::isAdvance($req['template_code']) && (int)$req['requester_id']!==(int)ApiAuth::id()
+            && !\App\Core\AdvancePolicyService::canViewFinancial((int)$req['requester_employee_id'],(int)ApiAuth::id())
+            && !\App\Core\Workflow\Engine::userHasPendingTask((int)$id,(int)ApiAuth::id())) {
+            Response::json(['ok'=>false,'error'=>'ليس لديك صلاحية التعليق على هذا الطلب'],403); return;
+        }
         WorkflowEngine::addComment((int)$id, (string)($b['notes'] ?? ''), ApiAuth::id());
         Response::json(['ok' => true, 'message' => 'تم إضافة التعليق']);
     }

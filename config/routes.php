@@ -994,6 +994,10 @@ $router->post('/api/custody/{id}/return', [ApiController::class, 'returnCustody'
 $router->post('/api/custody/issue', [ApiController::class, 'issueCustody'], ['api', 'perm:custody.mobile']);
 
 // سير العمل والموافقات (Workflow) للموبايل
+$router->get('/api/advances/disbursements', [ApiController::class, 'advanceDisbursements'], ['api', 'perm:accounting.manage,payroll.manage']);
+$router->get('/api/advances/{id}/receipt', [ApiController::class, 'advanceReceipt'], ['api', 'perm:accounting.manage,payroll.manage']);
+$router->post('/api/advances/{id}/authorize', [ApiController::class, 'advanceAuthorize'], ['api', 'perm:accounting.manage']);
+$router->post('/api/advances/{id}/pay', [ApiController::class, 'advancePay'], ['api', 'perm:accounting.manage,payroll.manage']);
 $router->get('/api/workflows/templates', [ApiController::class, 'workflowTemplates'], ['api', 'perm:workflow.create,mobile.approvals']);
 $router->get('/api/workflows/templates/{id}', [ApiController::class, 'workflowTemplateDetail'], ['api', 'perm:workflow.create,mobile.approvals']);
 $router->get('/api/employees/{id}/advance-limit', [ApiController::class, 'employeeAdvanceLimit'], ['api', 'perm:workflow.create,mobile.approvals']);
@@ -1039,9 +1043,9 @@ $router->post('/api/call-center/reservations/{id}', [CallCenterController::class
 $router->post('/api/call-center/reservations/{id}/status', [CallCenterController::class, 'status'], ['api', 'perm:call_center.manage,reservations.call_center']);
 $router->post('/api/call-center/reservations/{id}/cancel', [CallCenterController::class, 'cancelReservation'], ['api', 'perm:call_center.manage,reservations.call_center']);
 $router->post('/api/call-center/reservations/{id}/reschedule', [CallCenterController::class, 'rescheduleReservation'], ['api', 'perm:call_center.manage,reservations.call_center']);
-$router->get('/api/workflows/requests/{id}', [ApiController::class, 'workflowShowRequest'], ['api', 'perm:workflow.create,workflow.decide,approvals.decide,mobile.approvals']);
+$router->get('/api/workflows/requests/{id}', [ApiController::class, 'workflowShowRequest'], ['api', 'perm:workflow.create,workflow.decide,approvals.decide,mobile.approvals,accounting.manage,payroll.manage']);
 $router->post('/api/workflows/requests/{id}/decide', [ApiController::class, 'workflowDecide'], ['api', 'perm:mobile.approvals,workflow.decide,approvals.decide']);
-$router->post('/api/workflows/requests/{id}/resubmit', [ApiController::class, 'workflowResubmit'], ['api', 'perm:workflow.create']);
+$router->post('/api/workflows/requests/{id}/resubmit', [ApiController::class, 'workflowResubmit'], ['api', 'perm:workflow.create,mobile.approvals']);
 $router->post('/api/workflows/requests/{id}/edit', [ApiController::class, 'workflowEditRequest'], ['api', 'perm:workflow.create,mobile.approvals,workflow.decide,approvals.decide']);
 $router->post('/api/workflows/requests/{id}/cancel', [ApiController::class, 'workflowCancelRequest'], ['api', 'perm:workflow.create,mobile.approvals']);
 $router->post('/api/workflows/requests/{id}/comment', [ApiController::class, 'workflowComment'], ['api', 'perm:workflow.create']);

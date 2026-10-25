@@ -26,6 +26,10 @@ class AuthProvider extends ChangeNotifier {
   /// التحقق من امتلاك المستخدم لصلاحية معيّنة (مدير النظام لديه كل الصلاحيات مسبقاً من الخادم)
   bool can(String permission) => permissions.contains(permission);
 
+  bool get canManageAdvances =>
+      can('hr.manage') ||
+      ['مدير النظام', 'مدير قسم الموارد البشرية'].contains(user?['role']);
+
   /// يتحقق ما إذا كان المستخدم الحالي بدور "كابتن" (نادل يأخذ الطلبات من الطاولات)
   /// حساب الكابتن يُعرض له شاشة واحدة فقط (شاشة الكابتن) بواجهة التابلت دائماً
   bool get isCaptain {

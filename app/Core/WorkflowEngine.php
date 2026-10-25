@@ -338,6 +338,7 @@ class WorkflowEngine
         if ($req['status'] === 'pending') {
             // المقدم يستطيع التعديل
             if ((int)$req['requester_id'] === $userId) return true;
+            if (!empty($req['workflow_version_id'])) return \App\Core\Workflow\Engine::userHasPendingTask($requestId, $userId);
             // المدير/المعتمد الحالي يستطيع التعديل
             $steps = self::resolveSteps((int)$req['template_id'], (int)$req['current_step'], $requestId);
             foreach ($steps as $s) {
@@ -536,8 +537,9 @@ class WorkflowEngine
              FROM requests r
              JOIN approval_templates t ON t.id = r.template_id
              LEFT JOIN users u ON u.id = r.requester_id
-             WHERE r.requester_id = ? ORDER BY r.id DESC",
-            [$userId]
+             WHERE r.requester_id = ? OR (t.code IN ('hr_advance','hr_exceptional_advance','hr_long_advance')
+                AND r.requester_employee_id IN (SELECT id FROM employees WHERE user_id=?)) ORDER BY r.id DESC",
+            [$userId, $userId]
         )->fetchAll();
     }
 
@@ -574,6 +576,10 @@ class WorkflowEngine
             }
             if ($r['status'] !== 'pending') {
                 $out[] = $r;
+                continue;
+            }
+            if (!empty($r['workflow_version_id'])) {
+                if (\App\Core\Workflow\Engine::userHasPendingTask((int)$r['id'], $userId)) $out[] = $r;
                 continue;
             }
             $steps = self::resolveSteps((int)$r['template_id'], (int)$r['current_step'], (int)$r['id']);

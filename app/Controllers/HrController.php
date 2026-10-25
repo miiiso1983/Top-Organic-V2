@@ -2209,9 +2209,12 @@ class HrController extends Controller
         ]);
     }
 
-    public function approveAdvanceForPayment(string $id): void
+    public function approveAdvanceForPayment(string $id, bool $api = false): void
     {
-        if (!Auth::can('accounting.manage')) Response::abort(403, 'اعتماد الصرف للمحاسب فقط');
+        if (!Auth::can('accounting.manage')) {
+            if ($api) { Response::json(['ok'=>false,'error'=>'اعتماد الصرف للمحاسب فقط'],403); return; }
+            Response::abort(403, 'اعتماد الصرف للمحاسب فقط');
+        }
         try {
             $a = Database::query('SELECT employee_id FROM salary_advances WHERE id=?', [(int)$id])->fetch();
             if (!$a) throw new \RuntimeException('السلفة غير موجودة');
@@ -2228,8 +2231,12 @@ class HrController extends Controller
                 Database::query('UPDATE salary_advances SET accountant_approved_at=NOW(),accountant_approved_by=? WHERE id=?', [Auth::id(),(int)$id]);
                 WorkflowEngine::addComment($requestId, 'اعتماد المحاسب للصرف — دون إنشاء قيد محاسبي', (int)Auth::id());
             });
+            if ($api) { Response::json(['ok'=>true,'message'=>'اعتمد الطلب وأصبح جاهزاً للصرف']); return; }
             $this->flash('success', 'اعتمد الطلب وأصبح جاهزاً للصرف');
-        } catch (\Throwable $e) { $this->flash('danger', $e->getMessage()); }
+        } catch (\Throwable $e) {
+            if ($api) { Response::json(['ok'=>false,'error'=>$e->getMessage()],422); return; }
+            $this->flash('danger', $e->getMessage());
+        }
         Response::redirect('/accounting/advances/disbursement');
     }
 
@@ -2241,21 +2248,24 @@ class HrController extends Controller
         require BASE_PATH . '/app/Views/accounting/advance_receipt.php';
     }
 
-    public function payAdvance(string $id): void
+    public function payAdvance(string $id, bool $api = false): void
     {
         $advanceId = (int)$id;
         $redirectTo = (string)$this->input('redirect_to', '');
         $defaultRedirect = ($redirectTo !== '' && str_starts_with($redirectTo, '/')) ? $redirectTo : '/accounting/advances/' . $advanceId;
         $advance = Database::query("SELECT * FROM salary_advances WHERE id = ?", [$advanceId])->fetch();
         if (!$advance || $advance['status'] !== 'approved' || (float)$advance['paid_amount'] > 0) {
+            if ($api) { Response::json(['ok'=>false,'error'=>'السلفة غير جاهزة للصرف أو ليس لديك الصلاحية'],422); return; }
             Response::redirect('/accounting/advances');
         }
         if (!Auth::can('payroll.manage') && !Auth::can('accounting.manage')) {
             $this->flash('danger', 'ليس لديك صلاحية صرف السلف');
+            if ($api) { Response::json(['ok'=>false,'error'=>'السلفة غير جاهزة للصرف أو ليس لديك الصلاحية'],422); return; }
             Response::redirect('/accounting/advances');
         }
         if (!HrService::isEmployeeFileOpen((int)$advance['employee_id'])) {
             $this->flash('danger', 'ملف الموظف مغلق أو مأرشف، لا يمكن الصرف');
+            if ($api) { Response::json(['ok'=>false,'error'=>'السلفة غير جاهزة للصرف أو ليس لديك الصلاحية'],422); return; }
             Response::redirect('/accounting/advances');
         }
 
@@ -2350,9 +2360,11 @@ class HrController extends Controller
             }
 
             Database::commit();
+            if ($api) { Response::json(['ok'=>true,'message'=>'تم تسليم السلفة']); return; }
             $this->flash('success', 'تم تسليم السلفة');
         } catch (\Throwable $e) {
             Database::rollBack();
+            if ($api) { Response::json(['ok'=>false,'error'=>$e->getMessage()],422); return; }
             $this->flash('danger', 'خطأ: ' . $e->getMessage());
         }
         Response::redirect($defaultRedirect);

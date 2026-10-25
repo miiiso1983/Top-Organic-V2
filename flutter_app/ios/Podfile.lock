@@ -135,6 +135,8 @@ PODS:
     - Flutter
   - permission_handler_apple (9.4.8):
     - Flutter
+  - printing (1.0.0):
+    - Flutter
   - PromisesObjC (2.4.1)
   - record_ios (2.0.0):
     - Flutter
@@ -171,6 +173,7 @@ DEPENDENCIES:
   - mobile_scanner (from `.symlinks/plugins/mobile_scanner/darwin`)
   - package_info_plus (from `.symlinks/plugins/package_info_plus/ios`)
   - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
+  - printing (from `.symlinks/plugins/printing/ios`)
   - record_ios (from `.symlinks/plugins/record_ios/ios`)
   - shared_preferences_foundation (from `.symlinks/plugins/shared_preferences_foundation/darwin`)
   - sqflite_darwin (from `.symlinks/plugins/sqflite_darwin/darwin`)
@@ -236,6 +239,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/package_info_plus/ios"
   permission_handler_apple:
     :path: ".symlinks/plugins/permission_handler_apple/ios"
+  printing:
+    :path: ".symlinks/plugins/printing/ios"
   record_ios:
     :path: ".symlinks/plugins/record_ios/ios"
   shared_preferences_foundation:
@@ -248,47 +253,48 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/workmanager_apple/ios"
 
 SPEC CHECKSUMS:
-  audioplayers_darwin: f15e209a3e856d1a7edcf98dc029f484fead2242
-  camera_avfoundation: 769d252259fa21e39ada7399c9dc9c0921af8165
-  connectivity_plus: 2a701ffec2c0ae28a48cf7540e279787e77c447d
-  device_info_plus: bf2e3232933866d73fe290f2942f2156cdd10342
+  audioplayers_darwin: 835ced6edd4c9fc8ebb0a7cc9e294a91d99917d5
+  camera_avfoundation: 968a9a5323c79a99c166ad9d7866bfd2047b5a9b
+  connectivity_plus: cb623214f4e1f6ef8fe7403d580fdad517d2f7dd
+  device_info_plus: 21fcca2080fbcd348be798aa36c3e5ed849eefbe
   Firebase: 7ca191e43724142f79fae653547b3382c45413cc
-  firebase_core: 7ed66bd750bf2b7a29268b21d63eec7bc6799ee8
-  firebase_messaging: 437b5662e6a3a945a7a07166bfba05a86c998b55
+  firebase_core: 55de508663ceda7d1dc369a32b327a5655019ae2
+  firebase_messaging: df68cb5feefa02766144a50fa5348362a0127008
   FirebaseCore: c990214798d7c568ad436a15ba7da25c7a278c9a
   FirebaseCoreInternal: 656b1c2fd5a1c5976183dc54b73deda78fb26ee3
   FirebaseInstallations: f70a49eed611f5602f373e40974b3b01556ac217
   FirebaseMessaging: c15f48126adbe8b4d3238a5e1fa24bab3ad3e472
   Flutter: 71a624a5bc0c04062bf19101d501e466baf2fb47
-  flutter_local_notifications: eda81afddbf18f8589f6ec069ce593c4c6378769
-  flutter_secure_storage_darwin: 557817588b80e60213cbecb573c45c76b788018d
-  flutter_webrtc: e0ea105ab0892632c46cf0cdd61b865259777f55
-  geolocator_apple: 66b711889fd333205763b83c9dcf0a57a28c7afd
-  google_mlkit_commons: 75b2579ccf522fe01d42e689babda04c4510ba2f
-  google_mlkit_face_detection: 9dc1acbfcec8a5f7920ec85beb90a0a79e52fd5d
+  flutter_local_notifications: 643a3eda1ce1c0599413ca31672536d423dee214
+  flutter_secure_storage_darwin: acdb3f316ed05a3e68f856e0353b133eec373a23
+  flutter_webrtc: 99283145164f482a16bf7122ef407b5d59d43158
+  geolocator_apple: ab36aa0e8b7d7a2d7639b3b4e48308394e8cef5e
+  google_mlkit_commons: b4dfe2f6ae4cbf24010dc6640a28984d01343c86
+  google_mlkit_face_detection: 21baa82ab858694c846f0e0bfa64e3a3ca7bceda
   GoogleDataTransport: a24e58982ab3ba2f64d79613e027fe7f57e88539
   GoogleMLKit: b1eee21a41c57704fe72483b15c85cb2c0cd7444
   GoogleToolboxForMac: d1a2cbf009c453f4d6ded37c105e2f67a32206d8
   GoogleUtilities: 4e0c2ad9fa0d0d18b5c4df8bf57b461cba35b0bb
   GTMSessionFetcher: 5aea5ba6bd522a239e236100971f10cb71b96ab6
-  image_picker_ios: 4f2f91b01abdb52842a8e277617df877e40f905b
-  livekit_client: 7bbd9cb93075fcc818d2b6b73668b3a22e69d669
-  local_auth_darwin: 63c73d6d28cc3e239be2b6aa460ea6e317cd5100
+  image_picker_ios: e0ece4aa2a75771a7de3fa735d26d90817041326
+  livekit_client: 55f2f6afa597719985fa4913f6e889eb2b7eacd8
+  local_auth_darwin: c3ee6cce0a8d56be34c8ccb66ba31f7f180aaebb
   MLImage: 0de5c6c2bf9e93b80ef752e2797f0836f03b58c0
   MLKitCommon: 47d47b50a031d00db62f1b0efe5a1d8b09a3b2e6
   MLKitFaceDetection: 32549f1e70e6e7731261bf9cea2b74095e2531cb
   MLKitVision: 39a5a812db83c4a0794445088e567f3631c11961
-  mobile_scanner: 77265f3dc8d580810e91849d4a0811a90467ed5e
+  mobile_scanner: 9157936403f5a0644ca3779a38ff8404c5434a93
   nanopb: fad817b59e0457d11a5dfbde799381cd727c1275
-  package_info_plus: c0502532a26c7662a62a356cebe2692ec5fe4ec4
-  permission_handler_apple: ee2fe0fd04551b304eb002714ff067c371c822ed
+  package_info_plus: af8e2ca6888548050f16fa2f1938db7b5a5df499
+  permission_handler_apple: 92d754bbaa7361d436db2d6c3c1c2a0fdcec462e
+  printing: a8960104e6c1a2b4bd3483a2f79c69be60830d08
   PromisesObjC: 752c3227f599e3467650e47ea36f433eeb10c273
-  record_ios: 41f9412c3311401689babe6d7ba69362f10b8325
-  shared_preferences_foundation: 5086985c1d43c5ba4d5e69a4e8083a389e2909e6
-  sqflite_darwin: 5a7236e3b501866c1c9befc6771dfd73ffb8702d
+  record_ios: 390a30c7caaf8b5d0fb1cb1d2fd5064b48b4520c
+  shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
+  sqflite_darwin: 20b2a3a3b70e43edae938624ce550a3cbf66a3d0
   WebRTC-SDK: 7dc931c64c00c735a614382f1a59cf65019c3c17
-  webview_flutter_wkwebview: 29eb20d43355b48fe7d07113835b9128f84e3af4
-  workmanager_apple: 4cb452c58500fede6fb2f099faf7ebc5fcf2d034
+  webview_flutter_wkwebview: 8ebf4fded22593026f7dbff1fbff31ea98573c8d
+  workmanager_apple: 1fc2a64e6a63ed3540fbb91b65f0c0d501881248
 
 PODFILE CHECKSUM: f6db280de5e9b8020357263034aba866af984290
 

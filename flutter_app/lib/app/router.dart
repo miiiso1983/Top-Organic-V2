@@ -66,6 +66,9 @@ GoRouter buildRouter(AuthProvider auth) {
         return loggingIn ? null : '/login';
       }
 
+      if (state.matchedLocation == '/hr/exceptional-advance' &&
+          !auth.canManageAdvances)
+        return '/approvals';
       final isCaptain = auth.isCaptain;
       if (loggingIn) return isCaptain ? '/captain' : '/dashboard';
 

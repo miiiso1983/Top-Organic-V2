@@ -1,3 +1,5 @@
+import 'advance_policy.dart';
+import 'advance_snapshot_card.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -349,15 +351,20 @@ class _WorkflowEditScreenState extends State<WorkflowEditScreen> {
     };
     final children = <Widget>[
       _buildReturnNotice(),
+      if (_advanceLimit != null &&
+          AdvancePolicy.isAdvance(_request?['template_code']))
+        AdvanceSnapshotCard(
+          snapshot: _advanceLimit!,
+          code: _request!['template_code'],
+        ),
       if (fieldMap.containsKey('amount') &&
-          (_request?['template_code'] == 'hr_advance' ||
-              _request?['template_code'] == 'hr_exceptional_advance'))
+          AdvancePolicy.isAdvance(_request?['template_code']))
         _buildAdvanceAmountField(fieldMap['amount']!),
       for (final f in fields)
         if (!{
           'employee_id',
           'employee_name',
-          'amount',
+          if (AdvancePolicy.isAdvance(_request?['template_code'])) 'amount',
         }.contains((f as Map<String, dynamic>)['name']))
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
@@ -410,34 +417,20 @@ class _WorkflowEditScreenState extends State<WorkflowEditScreen> {
     final required = field['required'] == true;
     final suffix = required ? ' *' : '';
     final limit = _advanceLimit;
-    final salary = (limit?['salary'] as num?)?.toDouble() ?? 0.0;
-    final max = (limit?['max'] as num?)?.toDouble() ?? 0.0;
-    final remaining = (limit?['remaining'] as num?)?.toDouble() ?? 0.0;
-    final helperText = salary > 0
-        ? '${t('hr_advance_salary_label')}$salary${t('hr_advance_max_label')}$max${t('hr_advance_remaining_label')}$remaining'
-        : null;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextFormField(
-        decoration: InputDecoration(
-          labelText: '$label$suffix',
-          helperText: helperText,
-        ),
+        decoration: InputDecoration(labelText: '$label$suffix'),
         keyboardType: TextInputType.number,
         initialValue: _values[name]?.toString(),
         onChanged: (v) => _values[name] = v,
         onSaved: (v) => _values[name] = v,
-        validator: (v) {
-          if (required && (v == null || v.isEmpty))
-            return t('workflow_edit_amount_required');
-          final val = double.tryParse(v ?? '') ?? 0.0;
-          if (val <= 0) return t('workflow_edit_amount_invalid');
-          if (salary > 0 && val > remaining)
-            return remaining <= 0
-                ? t('workflow_edit_advance_exhausted')
-                : '${t('workflow_edit_amount_exceeds_prefix')}$remaining';
-          return null;
-        },
+        validator: (v) => AdvancePolicy.validateAmount(
+          v,
+          _request!['template_code'],
+          limit,
+          english: context.read<LocaleProvider>().locale.languageCode == 'en',
+        ),
       ),
     );
   }

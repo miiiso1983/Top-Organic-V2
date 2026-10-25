@@ -1,3 +1,5 @@
+import 'advance_policy.dart';
+import 'advance_snapshot_card.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -13,11 +15,16 @@ import '../../shared/widgets/offline_banner.dart';
 /// شاشة إنشاء طلب موافقة (Workflow) من تطبيق الموبايل
 /// تعرض قائمة القوالب المتاحة، ثم نموذج الحقول الديناميكي لكل قالب.
 class WorkflowCreateScreen extends StatefulWidget {
-  const WorkflowCreateScreen({super.key, this.initialTemplateId});
+  const WorkflowCreateScreen({
+    super.key,
+    this.initialTemplateId,
+    this.allowedTemplateCodes,
+  });
 
   /// إذا مُرِّر (عبر القائمة المنسدلة في شاشة الموافقات)، يتم فتح نموذج هذا
   /// القالب مباشرةً دون المرور بشاشة اختيار نوع الطلب.
   final int? initialTemplateId;
+  final List<String>? allowedTemplateCodes;
 
   @override
   State<WorkflowCreateScreen> createState() => _WorkflowCreateScreenState();
@@ -33,6 +40,10 @@ class _WorkflowCreateScreenState extends State<WorkflowCreateScreen> {
   List<Map<String, dynamic>> _items = [];
   Map<String, dynamic>? _advanceLimit;
   bool _autoFillEmployee = false;
+  bool _loadingAdvance = false;
+  int _advanceSequence = 0;
+  String? _advanceError;
+  bool get _isAdvance => AdvancePolicy.isAdvance(_selectedTemplate?['code']);
   final Map<String, dynamic> _values = {};
   final Map<String, XFile?> _files = {};
   bool _submitting = false;
@@ -66,7 +77,13 @@ class _WorkflowCreateScreenState extends State<WorkflowCreateScreen> {
       // حتى تعمل الواجهة ديناميكياً مع أي قالب جديد (مثل طلب التعيين / إيقاف الدوام)
       if (!mounted) return;
       setState(() {
-        _templates = allTemplates;
+        _templates = allTemplates
+            .where(
+              (t) =>
+                  widget.allowedTemplateCodes == null ||
+                  widget.allowedTemplateCodes!.contains(t['code']),
+            )
+            .toList();
         _loading = false;
       });
     } catch (e) {
@@ -93,6 +110,9 @@ class _WorkflowCreateScreenState extends State<WorkflowCreateScreen> {
       final data = body['data'] as Map<String, dynamic>;
       if (!mounted) return;
       setState(() {
+        _advanceSequence++;
+        _loadingAdvance = false;
+        _advanceError = null;
         _selectedTemplate = data;
         _employees = data['employees'] ?? [];
         _departments = data['departments'] ?? [];
@@ -102,7 +122,8 @@ class _WorkflowCreateScreenState extends State<WorkflowCreateScreen> {
         _autoFillEmployee =
             user != null &&
             user['employee_id'] != null &&
-            (data['code'] == 'hr_leave' ||
+            (data['code'] == 'hr_advance' ||
+                data['code'] == 'hr_leave' ||
                 data['code'] == 'hr_missing_attendance');
         // تعبئة بيانات الموظف تلقائياً من حساب المستخدم للإجازات وطلب نسيان البصمة (الطلب للنفس)
         if (_autoFillEmployee) {
@@ -126,6 +147,32 @@ class _WorkflowCreateScreenState extends State<WorkflowCreateScreen> {
         _error =
             '${t('workflow_create_template_details_error_prefix')}${e.toString()}';
         _loading = false;
+      });
+    }
+  }
+
+  Future<void> _loadAdvance(String? employeeId) async {
+    final sequence = ++_advanceSequence;
+    setState(() {
+      _advanceLimit = null;
+      _advanceError = null;
+      _loadingAdvance = employeeId != null;
+    });
+    if (employeeId == null) return;
+    try {
+      final res = await context.read<ApiClient>().get(
+        '/employees/$employeeId/advance-limit',
+      );
+      if (!mounted || sequence != _advanceSequence) return;
+      setState(() {
+        _advanceLimit = Map<String, dynamic>.from(res.data['data']);
+        _loadingAdvance = false;
+      });
+    } catch (e) {
+      if (!mounted || sequence != _advanceSequence) return;
+      setState(() {
+        _loadingAdvance = false;
+        _advanceError = t('workflow_create_salary_load_error');
       });
     }
   }
@@ -493,19 +540,23 @@ class _WorkflowCreateScreenState extends State<WorkflowCreateScreen> {
               };
             }).toList(),
             initialValue: _values[name]?.toString(),
-            onSelected: (v) => setState(() {
-              _values[name] = v;
-              if (v != null) {
-                final emp =
-                    _employees.firstWhere(
-                          (e) => e['id']?.toString() == v,
-                          orElse: () => <String, dynamic>{},
-                        )
-                        as Map<String, dynamic>?;
-                if (emp != null)
-                  _values['${name}_name'] = emp['full_name']?.toString() ?? '';
-              }
-            }),
+            onSelected: (v) {
+              setState(() {
+                _values[name] = v;
+                if (v != null) {
+                  final emp =
+                      _employees.firstWhere(
+                            (e) => e['id']?.toString() == v,
+                            orElse: () => <String, dynamic>{},
+                          )
+                          as Map<String, dynamic>?;
+                  if (emp != null)
+                    _values['${name}_name'] =
+                        emp['full_name']?.toString() ?? '';
+                }
+              });
+              if (_isAdvance && name == 'employee_id') _loadAdvance(v);
+            },
           );
         }
         if (name == 'department_id') {
@@ -1379,35 +1430,20 @@ class _WorkflowCreateScreenState extends State<WorkflowCreateScreen> {
     final required = field['required'] == true;
     final suffix = required ? ' *' : '';
     final limit = _advanceLimit;
-    final salary = (limit?['salary'] as num?)?.toDouble() ?? 0.0;
-    final max = (limit?['max'] as num?)?.toDouble() ?? 0.0;
-    final remaining = (limit?['remaining'] as num?)?.toDouble() ?? 0.0;
-    final helperText = salary > 0
-        ? '${t('hr_advance_salary_label')}$salary${t('hr_advance_max_label')}$max${t('hr_advance_remaining_label')}$remaining'
-        : (limit?['error'] as String?) ??
-              t('workflow_create_salary_load_error');
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextFormField(
-        decoration: InputDecoration(
-          labelText: '$label$suffix',
-          helperText: helperText,
-        ),
+        decoration: InputDecoration(labelText: '$label$suffix'),
         keyboardType: TextInputType.number,
         initialValue: _values[name]?.toString(),
         onChanged: (v) => _values[name] = v,
         onSaved: (v) => _values[name] = v,
-        validator: (v) {
-          if (required && (v == null || v.isEmpty))
-            return t('workflow_create_required_field');
-          final val = double.tryParse(v ?? '') ?? 0.0;
-          if (val <= 0) return t('hr_advance_amount_invalid');
-          if (salary > 0 && val > remaining)
-            return remaining <= 0
-                ? t('workflow_create_advance_exhausted_month')
-                : '${t('hr_advance_amount_exceeds_prefix')}$remaining';
-          return null;
-        },
+        validator: (v) => AdvancePolicy.validateAmount(
+          v,
+          _selectedTemplate!['code'],
+          limit,
+          english: context.read<LocaleProvider>().locale.languageCode == 'en',
+        ),
       ),
     );
   }
@@ -1431,10 +1467,36 @@ class _WorkflowCreateScreenState extends State<WorkflowCreateScreen> {
     // employee_name ليس حقل حقيقي في القالب، بل قيمة مساعدة نحفظها من حقل employee_id
     final handled = <String>{'employee_name'};
 
-    if (_selectedTemplate!['code'] == 'hr_advance' &&
-        fieldMap.containsKey('amount')) {
-      children.add(_buildAdvanceAmountField(fieldMap['amount']!));
-      handled.add('amount');
+    if (_isAdvance) {
+      if (fieldMap.containsKey('employee_id')) {
+        if (_autoFillEmployee) {
+          children.add(
+            ListTile(title: Text(_values['employee_name']?.toString() ?? '')),
+          );
+        } else {
+          children.add(_buildField(fieldMap['employee_id']!));
+        }
+        handled.add('employee_id');
+      }
+      if (_loadingAdvance) children.add(const LinearProgressIndicator());
+      if (_advanceError != null)
+        children.add(
+          Text(
+            _advanceError!,
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+        );
+      if (_advanceLimit != null)
+        children.add(
+          AdvanceSnapshotCard(
+            snapshot: _advanceLimit!,
+            code: _selectedTemplate!['code'],
+          ),
+        );
+      if (fieldMap.containsKey('amount')) {
+        children.add(_buildAdvanceAmountField(fieldMap['amount']!));
+        handled.add('amount');
+      }
     }
 
     for (final f in fields) {
@@ -1452,7 +1514,11 @@ class _WorkflowCreateScreenState extends State<WorkflowCreateScreen> {
     children.add(const SizedBox(height: 20));
     children.add(
       ElevatedButton.icon(
-        onPressed: _submitting ? null : _submit,
+        onPressed:
+            _submitting ||
+                (_isAdvance && (_loadingAdvance || _advanceLimit == null))
+            ? null
+            : _submit,
         icon: _submitting
             ? const SizedBox(
                 width: 18,

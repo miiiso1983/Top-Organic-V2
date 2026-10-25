@@ -16,6 +16,9 @@ namespace App\Core {
     class Settings { public static function get($key,$default=null): mixed { return $default; } }
     class TestRedirect extends \RuntimeException {}
     class Response {
+        public static array $last=[];
+        public static int $status=200;
+        public static function json(array $data,int $status=200):void { self::$last=$data; self::$status=$status; }
         public static function redirect($url): never { throw new TestRedirect($url); }
         public static function abort($status,$message=''): never { throw new \RuntimeException($message); }
     }
@@ -153,6 +156,62 @@ namespace {
     check(!AdvancePolicyService::canViewFinancial(6,1),'Unrelated employee cannot view financial data');
     check(AdvancePolicyService::canViewFinancial(1,2),'Direct manager can view financial data');
     rejected(fn()=>$create('hr_long_advance',1,600000,6),'Non-HR long-term request allowed');
+    // Exercise the same API controllers used by both native platforms, with synthetic actors only.
+    $api = new App\Controllers\ApiController();
+    $as = function(int $id,array $permissions=[]):void {
+        $u=Database::query('SELECT u.*,r.name AS role_name FROM users u JOIN roles r ON r.id=u.role_id WHERE u.id=?',[$id])->fetch();
+        (new ReflectionProperty(App\Core\ApiAuth::class,'user'))->setValue(null,$u);
+        $_SESSION=['user_id'=>$id,'role_id'=>$u['role_id'],'role_name'=>$u['role_name'],'perms'=>$permissions];
+        $_POST=[]; $_GET=[];
+        App\Core\Response::$last=[]; App\Core\Response::$status=200;
+    };
+    $as(1); $api->workflowTemplates();
+    $codes=array_column(App\Core\Response::$last['data'],'code');
+    check(in_array('hr_advance',$codes,true) && !in_array('hr_long_advance',$codes,true) && !in_array('hr_exceptional_advance',$codes,true),'Employee mobile template visibility');
+    $api->workflowTemplateDetail((string)$templates['hr_long_advance']);
+    check(App\Core\Response::$status===403,'Employee direct template access blocked');
+    $api->workflowTemplateDetail((string)$templates['hr_advance']);
+    check(count(App\Core\Response::$last['data']['employees'])===1 && (int)App\Core\Response::$last['data']['employees'][0]['id']===1,'Monthly employee selector is self-only');
+    $as(4); $api->workflowTemplates();
+    $codes=array_column(App\Core\Response::$last['data'],'code');
+    check(in_array('hr_long_advance',$codes,true) && in_array('hr_exceptional_advance',$codes,true),'HR mobile templates');
+    $_POST=['template_id'=>$templates['hr_exceptional_advance'],'fields'=>['employee_id'=>1,'advance_type'=>'طويلة الأجل','amount'=>600000,'installments'=>6,'reason'=>'Synthetic legacy mobile']];
+    $api->workflowStoreRequest();
+    check((App\Core\Response::$last['ok']??false)===true,'Legacy mobile submission: '.json_encode(App\Core\Response::$last));
+    $mobileId=(int)App\Core\Response::$last['id'];
+    check(WorkflowEngine::getRequest($mobileId)['template_code']==='hr_long_advance','Old mobile long-term mapped to correct template');
+    $as(1);$api->workflowMyRequests();check(in_array($mobileId,array_map('intval',array_column(App\Core\Response::$last['data'],'id')),true),'Beneficiary sees advance submitted by HR');
+    $as(2); $api->workflowShowRequest((string)$mobileId);
+    check(App\Core\Response::$last['data']['can_decide']===true,'Current graph approver sees mobile decision button');
+    check(App\Core\Response::$last['data']['can_edit']===true,'Current graph approver can edit');
+    check(in_array($mobileId,array_map('intval',array_column(WorkflowEngine::getVisibleRequests(2),'id')),true),'Graph approver sees inbox request');
+    check(count(App\Core\Response::$last['data']['request']['employees'])===1,'Request does not expose unrelated employees');
+    $as(3); $api->workflowShowRequest((string)$mobileId);
+    check(App\Core\Response::$last['data']['can_decide']===false,'Future graph approver cannot decide early');
+    $as(6); $api->workflowShowRequest((string)$mobileId);
+    check(App\Core\Response::$status===403,'Unrelated account cannot read advance details');
+    $as(2); $_POST=['decision'=>'approved']; $api->workflowDecide((string)$mobileId);
+    $api->workflowShowRequest((string)$mobileId);check(App\Core\Response::$last['data']['can_decide']===false,'Previous approver cannot decide twice');
+    $as(3); $api->workflowShowRequest((string)$mobileId);check(App\Core\Response::$last['data']['can_decide']===true,'Next graph stage becomes available');
+    $_POST=['decision'=>'approved'];$api->workflowDecide((string)$mobileId);
+    $as(4); $_POST=['decision'=>'approved'];$api->workflowDecide((string)$mobileId);
+    $mobileAid=(int)WorkflowEngine::getRequest($mobileId)['data']['entity_id'];
+    $as(1); $api->advanceDisbursements();check(App\Core\Response::$status===403,'Employee cash list denied');
+    $api->advanceAuthorize((string)$mobileAid);check(App\Core\Response::$status===403,'Employee accountant action denied');
+    $api->advancePay((string)$mobileAid);check(App\Core\Response::$status===403,'Employee payment denied');
+    $as(6,['accounting.manage']);$api->advanceDisbursements();check(App\Core\Response::$last['ok']===true,'Accountant cash list available');
+    $_POST=['payment_method'=>'cash','cash_register_id'=>1]; $api->advancePay((string)$mobileAid);
+    check(App\Core\Response::$last['ok']===false,'Mobile cannot pay before accountant authorization');
+    $api->advanceReceipt((string)$mobileAid);check(App\Core\Response::$status===404,'No mobile receipt before actual payment');
+    $api->advanceAuthorize((string)$mobileAid);check(App\Core\Response::$last['ok']===true,'Mobile accountant authorization');
+    $before=(int)Database::query('SELECT COUNT(*) FROM cash_transactions')->fetchColumn();
+    $api->advancePay((string)$mobileAid);check(App\Core\Response::$last['ok']===true,'Mobile payment completes');
+    $api->advancePay((string)$mobileAid);check(App\Core\Response::$last['ok']===false,'Mobile duplicate payment rejected');
+    check((int)Database::query('SELECT COUNT(*) FROM cash_transactions')->fetchColumn()===$before+1,'Exactly one mobile payment');
+    $api->advanceReceipt((string)$mobileAid);check(App\Core\Response::$last['ok']===true && (int)App\Core\Response::$last['data']['id']===$mobileAid,'Mobile receipt after actual payment');
+    $as(1);$api->advanceReceipt((string)$mobileAid);check(App\Core\Response::$status===403,'Mobile receipt permission enforced');
+    echo "PASS: mobile template permissions, legacy long routing, graph decision stages, financial privacy, accountant authorization and single payment.\n";
+
     Database::query('UPDATE employees SET manager_id=NULL WHERE id=1');
     rejected(fn()=>$create('hr_long_advance',4,600000,6),'Missing manager bypassed required approval');
 
