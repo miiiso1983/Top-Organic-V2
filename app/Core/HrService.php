@@ -4190,33 +4190,20 @@ class HrService
         }
     }
 
-    private static function pairAttendanceRecords(array $records, string $workDate, array &$group): void
+    /** Assign a pair to the clock-in workday; clock-out may be on the next calendar day. */
+    private static function attendanceWorkDate(array $record, ?array $shift): string
     {
-        $openIn = null;
-        foreach ($records as $r) {
-            $type = (string)$r['check_type'];
-            if ($type === 'in') {
-                if ($openIn !== null) {
-                    self::addOrphanAttendanceIn($openIn, $group, $workDate);
-                }
-                $openIn = $r;
-            } elseif ($type === 'out') {
-                if ($openIn !== null) {
-                    $diff = max(0, strtotime((string)$r['checked_at']) - strtotime((string)$openIn['checked_at']));
-                    self::addAttendancePair($openIn, $r, $group, $workDate, $diff);
-                    $openIn = null;
-                } else {
-                    self::addOrphanAttendanceOut($r, $group, $workDate);
-                }
-            }
+        $recordDate = date('Y-m-d', strtotime((string)$record['checked_at']));
+        if (!$shift || ($shift['default']['attendance_type'] ?? 'shift') === 'flexible' || ($record['source'] ?? '') === 'request') {
+            return $recordDate;
         }
-        if ($openIn !== null) {
-            self::addOrphanAttendanceIn($openIn, $group, $workDate);
-        }
+        $startTime = $shift['overrides'][$recordDate]['start_time'] ?? $shift['default']['start_time'] ?? null;
+        return self::computeWorkDate((string)$record['checked_at'], $startTime);
     }
 
     /**
      * تجميع بصمات الحضور في أيام عمل وتوزيعها على زوج دخول/خروج لكل يوم.
+     * ربط الدخول بالخروج يتم زمنياً قبل التجميع؛ خروج اليوم التالي يتبع يوم عمل الدخول.
      * - الموظف ذو الوردية الثابتة: يوم العمل يُحسب من وقت بدء الوردية.
      * - الموظف المرن: يوم العمل = تاريخ أول دخول في الزوج.
      *
@@ -4259,68 +4246,59 @@ class HrService
             $shift = $shiftMap[$empId] ?? null;
             $isFixed = $shift && ($shift['default']['attendance_type'] ?? 'shift') !== 'flexible';
 
-            if ($isFixed) {
-                $byWorkDate = [];
-                foreach ($empRecords as $r) {
-                    $recordDate = date('Y-m-d', strtotime((string)$r['checked_at']));
-                    // سجلات طلبات نسيان البصمة تُعيَّن لتاريخها التقويمي مباشرة
-                    if (($r['source'] ?? '') === 'request') {
-                        $workDate = $recordDate;
+            $openIn = null;
+            foreach ($empRecords as $r) {
+                $type = (string)$r['check_type'];
+                if ($type === 'in') {
+                    if ($openIn !== null) {
+                        $workDate = self::attendanceWorkDate($openIn, $shift);
+                        $key = $empId . '|' . $workDate;
+                        if (!isset($groups[$key])) {
+                            $groups[$key] = self::initAttendanceGroup($empId, $info, $workDate);
+                        }
+                        self::addOrphanAttendanceIn($openIn, $groups[$key], $workDate);
+                    }
+                    $openIn = $r;
+                } elseif ($type === 'out') {
+                    // Fixed shifts can continue into the following calendar day. Do not
+                    // bridge missing punches across several days into invented work hours.
+                    $crossesMissingDays = $openIn !== null && $isFixed
+                        && substr((string)$r['checked_at'], 0, 10) > date('Y-m-d', strtotime(substr((string)$openIn['checked_at'], 0, 10) . ' +1 day'));
+                    if ($crossesMissingDays) {
+                        $workDate = self::attendanceWorkDate($openIn, $shift);
+                        $key = $empId . '|' . $workDate;
+                        if (!isset($groups[$key])) {
+                            $groups[$key] = self::initAttendanceGroup($empId, $info, $workDate);
+                        }
+                        self::addOrphanAttendanceIn($openIn, $groups[$key], $workDate);
+                        $openIn = null;
+                    }
+                    if ($openIn !== null) {
+                        $diff = max(0, strtotime((string)$r['checked_at']) - strtotime((string)$openIn['checked_at']));
+                        $workDate = self::attendanceWorkDate($openIn, $shift);
+                        $key = $empId . '|' . $workDate;
+                        if (!isset($groups[$key])) {
+                            $groups[$key] = self::initAttendanceGroup($empId, $info, $workDate);
+                        }
+                        self::addAttendancePair($openIn, $r, $groups[$key], $workDate, $diff);
+                        $openIn = null;
                     } else {
-                        $startTime = $shift['overrides'][$recordDate]['start_time'] ?? $shift['default']['start_time'] ?? null;
-                        $workDate = self::computeWorkDate((string)$r['checked_at'], $startTime);
-                    }
-                    $byWorkDate[$workDate][] = $r;
-                }
-                foreach ($byWorkDate as $workDate => $dateRecords) {
-                    $key = $empId . '|' . $workDate;
-                    if (!isset($groups[$key])) {
-                        $groups[$key] = self::initAttendanceGroup($empId, $info, $workDate);
-                    }
-                    self::pairAttendanceRecords($dateRecords, $workDate, $groups[$key]);
-                }
-            } else {
-                $openIn = null;
-                foreach ($empRecords as $r) {
-                    $type = (string)$r['check_type'];
-                    if ($type === 'in') {
-                        if ($openIn !== null) {
-                            $workDate = date('Y-m-d', strtotime((string)$openIn['checked_at']));
-                            $key = $empId . '|' . $workDate;
-                            if (!isset($groups[$key])) {
-                                $groups[$key] = self::initAttendanceGroup($empId, $info, $workDate);
-                            }
-                            self::addOrphanAttendanceIn($openIn, $groups[$key], $workDate);
+                        $workDate = self::attendanceWorkDate($r, $shift);
+                        $key = $empId . '|' . $workDate;
+                        if (!isset($groups[$key])) {
+                            $groups[$key] = self::initAttendanceGroup($empId, $info, $workDate);
                         }
-                        $openIn = $r;
-                    } elseif ($type === 'out') {
-                        if ($openIn !== null) {
-                            $diff = max(0, strtotime((string)$r['checked_at']) - strtotime((string)$openIn['checked_at']));
-                            $workDate = date('Y-m-d', strtotime((string)$openIn['checked_at']));
-                            $key = $empId . '|' . $workDate;
-                            if (!isset($groups[$key])) {
-                                $groups[$key] = self::initAttendanceGroup($empId, $info, $workDate);
-                            }
-                            self::addAttendancePair($openIn, $r, $groups[$key], $workDate, $diff);
-                            $openIn = null;
-                        } else {
-                            $workDate = date('Y-m-d', strtotime((string)$r['checked_at']));
-                            $key = $empId . '|' . $workDate;
-                            if (!isset($groups[$key])) {
-                                $groups[$key] = self::initAttendanceGroup($empId, $info, $workDate);
-                            }
-                            self::addOrphanAttendanceOut($r, $groups[$key], $workDate);
-                        }
+                        self::addOrphanAttendanceOut($r, $groups[$key], $workDate);
                     }
                 }
-                if ($openIn !== null) {
-                    $workDate = date('Y-m-d', strtotime((string)$openIn['checked_at']));
-                    $key = $empId . '|' . $workDate;
-                    if (!isset($groups[$key])) {
-                        $groups[$key] = self::initAttendanceGroup($empId, $info, $workDate);
-                    }
-                    self::addOrphanAttendanceIn($openIn, $groups[$key], $workDate);
+            }
+            if ($openIn !== null) {
+                $workDate = self::attendanceWorkDate($openIn, $shift);
+                $key = $empId . '|' . $workDate;
+                if (!isset($groups[$key])) {
+                    $groups[$key] = self::initAttendanceGroup($empId, $info, $workDate);
                 }
+                self::addOrphanAttendanceIn($openIn, $groups[$key], $workDate);
             }
         }
 

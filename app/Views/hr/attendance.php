@@ -47,12 +47,12 @@ $attQueryPdf = $attQuery ? $attQuery . '&format=pdf' : 'format=pdf';
         $inLines = [];
         $outLines = [];
         foreach ($r['pairs'] as $p) {
-            $inLines[] = Helpers::e($p['in']);
-            $outLines[] = Helpers::e($p['out']);
+            $inLines[] = Helpers::e($p['in'] === '-' ? 'غير مسجل' : $p['in']);
+            $outLines[] = Helpers::e($p['out'] === '-' ? 'غير مسجل' : $p['out']);
         }
         if (!$inLines) {
-            $inLines[] = '-';
-            $outLines[] = '-';
+            $inLines[] = 'غير مسجل';
+            $outLines[] = 'غير مسجل';
         }
     ?>
     <tr>

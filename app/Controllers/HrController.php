@@ -5323,6 +5323,7 @@ class HrController extends Controller
         $sheet = [
             'title' => $type, 'report_title' => $report['title'], 'period' => $filters['period'],
             'headers' => $headers, 'rows' => $sheetRows,
+            'durationColumns' => array_keys($columns, 'total_hours', true),
         ];
         if ($format === 'pdf') {
             ExportHelper::pdf('hr_' . $type . '_' . date('Ymd') . '.pdf', ['title' => $report['title'], 'period' => $filters['period'], 'headers' => $headers, 'rows' => $sheetRows]);
@@ -7530,12 +7531,12 @@ class HrController extends Controller
             $inText = [];
             $outText = [];
             foreach ($r['pairs'] as $p) {
-                $inText[] = $p['in'];
-                $outText[] = $p['out'];
+                $inText[] = $p['in'] === '-' ? 'غير مسجل' : $p['in'];
+                $outText[] = $p['out'] === '-' ? 'غير مسجل' : $p['out'];
             }
             if (!$inText) {
-                $inText[] = '-';
-                $outText[] = '-';
+                $inText[] = 'غير مسجل';
+                $outText[] = 'غير مسجل';
             }
             $rows[] = [
                 $r['full_name'],
@@ -7550,7 +7551,7 @@ class HrController extends Controller
         if ($format === 'pdf') {
             ExportHelper::pdf("attendance_export_$date.pdf", ['title' => 'الحضور والانصراف', 'period' => "تاريخ: $date", 'headers' => $headers, 'rows' => $rows]);
         } else {
-            ExportHelper::excel("attendance_export_$date.xlsx", [['title' => 'الحضور', 'report_title' => 'الحضور والانصراف', 'period' => "تاريخ: $date", 'headers' => $headers, 'rows' => $rows]]);
+            ExportHelper::excel("attendance_export_$date.xlsx", [['title' => 'الحضور', 'report_title' => 'الحضور والانصراف', 'period' => "تاريخ: $date", 'headers' => $headers, 'rows' => $rows, 'durationColumns' => [4]]]);
         }
     }
 

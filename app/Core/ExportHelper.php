@@ -57,7 +57,17 @@ class ExportHelper
 
             $rows = $sheet['rows'] ?? [];
             foreach ($rows as $r) {
-                $active->fromArray(array_values($r), null, 'A' . $rowIdx);
+                $values = array_values($r);
+                $active->fromArray($values, null, 'A' . $rowIdx);
+                foreach ($sheet['durationColumns'] ?? [] as $column) {
+                    $value = (string)($values[$column] ?? '');
+                    if (preg_match('/^(\d+):([0-5]\d)$/D', $value, $duration)) {
+                        $cell = self::col((int)$column + 1) . $rowIdx;
+                        $minutes = (int)$duration[1] * 60 + (int)$duration[2];
+                        $active->setCellValueExplicit($cell, $minutes / 1440, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_NUMERIC);
+                        $active->getStyle($cell)->getNumberFormat()->setFormatCode('[h]:mm');
+                    }
+                }
                 $rowIdx++;
             }
 

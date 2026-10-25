@@ -265,12 +265,12 @@ class HrReportService
             $inLines = [];
             $outLines = [];
             foreach ($g['pairs'] as $pair) {
-                $inLines[] = $pair['in'];
-                $outLines[] = $pair['out'];
+                $inLines[] = $pair['in'] === '-' ? 'غير مسجل' : $pair['in'];
+                $outLines[] = $pair['out'] === '-' ? 'غير مسجل' : $pair['out'];
             }
             if (!$inLines) {
-                $inLines[] = '-';
-                $outLines[] = '-';
+                $inLines[] = 'غير مسجل';
+                $outLines[] = 'غير مسجل';
             }
             $rows[] = [
                 'emp_code' => $g['emp_code'],
