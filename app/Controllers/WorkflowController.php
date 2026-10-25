@@ -337,6 +337,9 @@ class WorkflowController extends Controller
             Response::json(['ok' => false, 'error' => 'معرّف الموظف مطلوب'], 422);
             return;
         }
+        if (!\App\Core\AdvancePolicyService::canViewFinancial($employeeId, (int)Auth::id())) {
+            Response::json(['ok'=>false,'error'=>'ليس لديك صلاحية عرض استحقاق هذا الموظف'],403); return;
+        }
         $employee = Database::query("SELECT id FROM employees WHERE id = ?", [$employeeId])->fetch();
         if (!$employee) {
             Response::json(['ok' => false, 'error' => 'الموظف غير موجود'], 404);

@@ -109,10 +109,10 @@ $autoEmployee = $currentEmployeeId > 0 && !$isEdit && ($template['code'] ?? '') 
         <input type="file" name="<?= $name ?>" <?= !empty($f['required']) && !$val ? 'required' : '' ?>>
       <?php elseif ($f['type'] === 'number' || $name === 'amount'): ?>
         <input type="number" name="<?= $name ?>" value="<?= Helpers::e((string)$val) ?>" <?= !empty($f['required']) ? 'required' : '' ?> step="0.01">
-        <?php if ($name === 'amount' && in_array($template['code'] ?? '', ['hr_advance', 'hr_exceptional_advance'], true)): ?>
+        <?php if ($name === 'amount' && in_array($template['code'] ?? '', ['hr_advance', 'hr_exceptional_advance', 'hr_long_advance'], true)): ?>
         <small class="advance-limit-info" id="advance-limit-info">
           <?php if (!empty($advanceLimit) && ($advanceLimit['salary'] ?? 0) > 0): ?>
-          الراتب: <?= number_format((float)($advanceLimit['salary'] ?? 0), 2) ?> | الحد الأقصى (25%): <?= number_format((float)($advanceLimit['max'] ?? 0), 2) ?> | المتبقي: <?= number_format((float)($advanceLimit['remaining'] ?? 0), 2) ?>
+          الراتب: <?= number_format((float)($advanceLimit['salary'] ?? 0), 2) ?> | الحد المتاح بعد الخصومات والمديونية: <?= number_format((float)($advanceLimit['max'] ?? 0), 2) ?> | المتبقي: <?= number_format((float)($advanceLimit['remaining'] ?? 0), 2) ?>
           <?php elseif (!empty($advanceLimit['error'])): ?>
           <span class="text-danger"><?= Helpers::e($advanceLimit['error']) ?></span>
           <?php else: ?>
@@ -146,7 +146,7 @@ $autoEmployee = $currentEmployeeId > 0 && !$isEdit && ($template['code'] ?? '') 
 
 <script>
 $(document).ready(function() {
-    var exceptionalAdvance = <?= json_encode(($template['code'] ?? '') === 'hr_exceptional_advance') ?>;
+    var exceptionalAdvance = <?= json_encode(\App\Core\AdvancePolicyService::isAdvance($template['code'] ?? $template['template_code'] ?? '')) ?>;
 
     function updateAdvanceLimit(employeeId) {
         if (!exceptionalAdvance || !employeeId) {
@@ -159,8 +159,8 @@ $(document).ready(function() {
             if ((d.salary || 0) > 0) {
                 $('#advance-limit-info').text(
                     'الراتب: ' + Number(d.salary).toFixed(2) +
-                    ' | الحد الأقصى (25%): ' + Number(d.max).toFixed(2) +
-                    ' | المتبقي: ' + Number(d.remaining).toFixed(2)
+                    ' | الحد المتاح بعد الخصومات والمديونية: ' + Number(d.max).toFixed(2) +
+                    ' | المتبقي: ' + Number(d.remaining).toFixed(2) + ' | كامل المديونية: ' + Number(d.outstanding_debt || 0).toFixed(2) + ' | الاستقطاعات: ' + Number(d.deductions || 0).toFixed(2)
                 );
             } else {
                 $('#advance-limit-info').text(d.error || 'اختر موظف لعرض الحد المسموح');

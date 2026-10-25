@@ -2023,7 +2023,8 @@ class HrController extends Controller
         }
         $installments = max(1, (int)$this->input('installments', 1));
         $advanceType = (string)$this->input('advance_type', 'short');
-        $isLongTerm = $advanceType === 'long' || $installments > 1;
+        if (!in_array($advanceType, ['short','long'], true)) $advanceType = 'short';
+        $isLongTerm = $advanceType === 'long';
 
         // طريقة احتساب القسط الشهري للسلف طويلة الأجل: نسبة من الراتب أو مبلغ ثابت مستقطع
         $installmentMethod = (string)$this->input('installment_method', 'fixed');
@@ -2054,6 +2055,7 @@ class HrController extends Controller
         }
         Database::beginTransaction();
         try {
+            Database::query('SELECT id FROM employees WHERE id=? FOR UPDATE', [$employeeId])->fetch();
             Database::query(
                 "INSERT INTO salary_advances (employee_id, amount, advance_type, installments, reason, request_source, is_long_term, remaining_amount, installment_method, installment_percentage, installment_amount)
                  VALUES (?,?,?,?,?,'web',?,?,?,?,?)",
@@ -2070,6 +2072,7 @@ class HrController extends Controller
                 'advance_type' => $advanceType,
                 'installments' => $installments,
                 'reason' => (string)$this->input('reason'),
+                'request_kind' => (string)$this->input('request_kind', 'monthly'),
                 'title' => 'طلب سلفة - ' . Helpers::e($emp['full_name'] ?? '') . ' - ' . Helpers::money($amount),
             ]);
             Database::commit();
@@ -2199,11 +2202,43 @@ class HrController extends Controller
         $cashRegisters = Database::query("SELECT id, name FROM cash_registers WHERE is_active = 1 ORDER BY name")->fetchAll();
 
         $this->view('accounting/advances_disbursement', [
-            'title' => 'تسليم السلف',
+            'title' => 'اعتماد وتسليم السلف',
             'advances' => $advances,
             'bankAccounts' => $bankAccounts,
             'cashRegisters' => $cashRegisters,
         ]);
+    }
+
+    public function approveAdvanceForPayment(string $id): void
+    {
+        if (!Auth::can('accounting.manage')) Response::abort(403, 'اعتماد الصرف للمحاسب فقط');
+        try {
+            $a = Database::query('SELECT employee_id FROM salary_advances WHERE id=?', [(int)$id])->fetch();
+            if (!$a) throw new \RuntimeException('السلفة غير موجودة');
+            \App\Core\AdvancePolicyService::locked((int)$a['employee_id'], function () use ($id) {
+                $a = Database::query('SELECT * FROM salary_advances WHERE id=? FOR UPDATE', [(int)$id])->fetch();
+                if ($a['status'] !== 'approved' || !empty($a['paid_at'])) throw new \RuntimeException('السلفة غير جاهزة للاعتماد');
+                if (!empty($a['accountant_approved_at'])) return;
+                if (!HrService::isEmployeeFileOpen((int)$a['employee_id'])) throw new \RuntimeException('ملف الموظف غير مفتوح');
+                $requestId = HrWorkflowService::workflowRequestId('salary_advance', (int)$id);
+                $request = $requestId ? WorkflowEngine::getRequest($requestId) : null;
+                if (!$request || $request['status'] !== 'approved') throw new \RuntimeException('يجب إكمال جميع الموافقات أولاً');
+                $snapshot = \App\Core\AdvancePolicyService::snapshot((int)$a['employee_id'], $requestId);
+                if ($a['advance_type'] !== 'long' && (float)$a['amount'] > $snapshot['remaining']) throw new \RuntimeException('المبلغ يتجاوز الاستحقاق الحالي؛ يرجى مراجعة الطلب');
+                Database::query('UPDATE salary_advances SET accountant_approved_at=NOW(),accountant_approved_by=? WHERE id=?', [Auth::id(),(int)$id]);
+                WorkflowEngine::addComment($requestId, 'اعتماد المحاسب للصرف — دون إنشاء قيد محاسبي', (int)Auth::id());
+            });
+            $this->flash('success', 'اعتمد الطلب وأصبح جاهزاً للصرف');
+        } catch (\Throwable $e) { $this->flash('danger', $e->getMessage()); }
+        Response::redirect('/accounting/advances/disbursement');
+    }
+
+    public function printAdvanceReceipt(string $id): void
+    {
+        $advance = Database::query("SELECT a.*,e.full_name,e.emp_code,u.full_name AS paid_by_name
+            FROM salary_advances a JOIN employees e ON e.id=a.employee_id LEFT JOIN users u ON u.id=a.paid_by WHERE a.id=?", [(int)$id])->fetch();
+        if (!$advance || !in_array($advance['status'], ['paid','settled'], true) || empty($advance['paid_at']) || empty($advance['paid_by'])) Response::abort(404, 'سند الصرف متاح بعد التسليم الفعلي فقط');
+        require BASE_PATH . '/app/Views/accounting/advance_receipt.php';
     }
 
     public function payAdvance(string $id): void
@@ -2233,6 +2268,16 @@ class HrController extends Controller
 
         Database::beginTransaction();
         try {
+            Database::query('SELECT id FROM employees WHERE id=? FOR UPDATE', [(int)$advance['employee_id']])->fetch();
+            $advance = Database::query('SELECT * FROM salary_advances WHERE id=? FOR UPDATE', [$advanceId])->fetch();
+            if ($advance['status'] !== 'approved' || !empty($advance['paid_at']) || empty($advance['accountant_approved_at'])) throw new \RuntimeException('يجب اعتماد المحاسب أولاً، ولا يمكن صرف السلفة مرتين');
+            if (!HrService::isEmployeeFileOpen((int)$advance['employee_id'])) throw new \RuntimeException('ملف الموظف غير مفتوح');
+            $requestId = HrWorkflowService::workflowRequestId('salary_advance', $advanceId);
+            $request = $requestId ? WorkflowEngine::getRequest($requestId) : null;
+            if (!$request || $request['status'] !== 'approved') throw new \RuntimeException('مسار الموافقات غير مكتمل');
+            $snapshot = \App\Core\AdvancePolicyService::snapshot((int)$advance['employee_id'], $requestId);
+            if ($advance['advance_type'] !== 'long' && (float)$advance['amount'] > $snapshot['remaining']) throw new \RuntimeException('تغير الاستحقاق وأصبح أقل من المبلغ المعتمد؛ راجع المحاسب');
+            $amount = (float)$advance['amount'];
             Database::query(
                 "UPDATE salary_advances SET status = 'paid', paid_at = ?, payment_method = ?, bank_account_id = ?, cash_register_id = ?, paid_by = ? WHERE id = ?",
                 [$now, $paymentMethod, $bankAccountId ?: null, $cashRegisterId ?: null, Auth::id(), $advanceId]

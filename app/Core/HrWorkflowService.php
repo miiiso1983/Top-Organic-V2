@@ -19,7 +19,7 @@ class HrWorkflowService
     public static function register(): void
     {
         WorkflowEngine::registerOutcomeHandler('hr_leave', [self::class, 'onLeaveOutcome']);
-        WorkflowEngine::registerOutcomeHandler('hr_advance', [self::class, 'onAdvanceOutcome']);
+        foreach (AdvancePolicyService::CODES as $code) WorkflowEngine::registerOutcomeHandler($code, [self::class, 'onAdvanceOutcome']);
         WorkflowEngine::registerOutcomeHandler('hr_adjustment', [self::class, 'onAdjustmentOutcome']);
         WorkflowEngine::registerOutcomeHandler('hr_overtime', [self::class, 'onOvertimeOutcome']);
         WorkflowEngine::registerStepHandler('hr_overtime', [self::class, 'onOvertimeStep']);
@@ -54,8 +54,11 @@ class HrWorkflowService
     {
         $code = self::TEMPLATE_MAP[$entityType] ?? null;
         if (!$code) return null;
+        if ($entityType === 'salary_advance') {
+            $code = ($context['advance_type'] ?? 'short') === 'long' ? 'hr_long_advance' : (($context['request_kind'] ?? '') === 'exceptional' ? 'hr_exceptional_advance' : 'hr_advance');
+        }
         $template = WorkflowTemplateService::getTemplateByCode($code);
-        if (!$template) return null;
+        if (!$template) { if ($entityType === 'salary_advance') throw new \RuntimeException('مسار موافقات السلفة غير مهيأ'); return null; }
 
         $data = array_merge($context, [
             'title' => $context['title'] ?? ($template['name'] . ' - #' . $entityId),
@@ -135,13 +138,12 @@ class HrWorkflowService
     {
         $entityId = (int)($request['data']['entity_id'] ?? 0);
         if (!$entityId) return;
+        $ledgerStatus = in_array($status, ['cancelled','rejected'], true) ? 'rejected' : ($status === 'approved' ? 'approved' : 'pending');
         Database::query(
-            "UPDATE salary_advances SET status = ?, approved_by = ?, approved_at = NOW() WHERE id = ?",
-            [$status, $actorId, $entityId]
+            "UPDATE salary_advances SET status=?, approved_by=?, approved_at=CASE WHEN ?='approved' THEN NOW() ELSE NULL END,
+                accountant_approved_by=NULL, accountant_approved_at=NULL WHERE id=? AND status NOT IN ('paid','settled')",
+            [$ledgerStatus, $actorId, $ledgerStatus, $entityId]
         );
-        if ($status === 'approved') {
-            HrService::generateRepaymentSchedule($entityId);
-        }
         self::notifyEmployee($request, $status);
     }
 

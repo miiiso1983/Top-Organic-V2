@@ -356,6 +356,7 @@ final class Engine
         $config = json_decode($node['config_json'] ?? '{}', true) ?: [];
         $req = WorkflowEngine::getRequest($requestId);
         $approvers = ApproverResolver::resolve((array)($config['approver'] ?? []), $req);
+        if (!$approvers && !empty($config['required_approver'])) throw new \RuntimeException('تعذر تحديد المعتمد: ' . $node['title'] . '؛ يرجى استكمال ربط المدير والصلاحيات');
         if (!$approvers && !empty($config['fallback'])) {
             $approvers = ApproverResolver::resolve((array)$config['fallback'], $req);
         }

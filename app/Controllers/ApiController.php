@@ -922,7 +922,7 @@ class ApiController extends Controller
         }
         $advanceType = (string)($b['advance_type'] ?? 'short');
         $installments = max(1, (int)($b['installments'] ?? 1));
-        $isLongTerm = $advanceType === 'long' || $installments > 1;
+        $isLongTerm = $advanceType === 'long';
 
         // طريقة احتساب القسط الشهري للسلف طويلة الأجل: نسبة من الراتب أو مبلغ ثابت مستقطع
         $installmentMethod = (string)($b['installment_method'] ?? 'fixed');
@@ -955,6 +955,9 @@ class ApiController extends Controller
             return;
         }
 
+        Database::beginTransaction();
+        try {
+        Database::query('SELECT id FROM employees WHERE id=? FOR UPDATE', [(int)$emp['id']])->fetch();
         Database::query(
             "INSERT INTO salary_advances (employee_id, amount, advance_type, installments, reason, request_source, is_long_term, remaining_amount, mobile_device_id, installment_method, installment_percentage, installment_amount)
              VALUES (?,?,?,?,?,'mobile',?,?,?,?,?,?)",
@@ -973,7 +976,11 @@ class ApiController extends Controller
             'reason' => (string)($b['reason'] ?? ''),
             'title' => 'طلب سلفة من الموبايل - ' . Helpers::e($emp['full_name'] ?? '') . ' - ' . Helpers::money($amount),
         ]);
+        Database::commit();
         Response::json(['ok' => true, 'message' => 'تم تقديم طلب السلفة', 'id' => $advanceId]);
+        } catch (\Throwable $e) {
+            Database::rollBack(); Response::json(['ok'=>false,'error'=>$e->getMessage()], 422);
+        }
     }
 
     public function employeeAdvances(): void
@@ -3204,6 +3211,9 @@ class ApiController extends Controller
         if (!$employeeId) {
             Response::json(['ok' => false, 'error' => 'معرّف الموظف مطلوب'], 422);
             return;
+        }
+        if (!\App\Core\AdvancePolicyService::canViewFinancial($employeeId, (int)ApiAuth::id())) {
+            Response::json(['ok'=>false,'error'=>'ليس لديك صلاحية عرض استحقاق هذا الموظف'],403); return;
         }
         $employee = Database::query("SELECT id FROM employees WHERE id = ?", [$employeeId])->fetch();
         if (!$employee) {

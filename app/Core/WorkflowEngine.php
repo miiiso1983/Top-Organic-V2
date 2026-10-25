@@ -110,74 +110,32 @@ class WorkflowEngine
         )->fetch();
     }
 
-    /** يُرجع بيانات حد السلفة للموظف: الراتب، الحد الأقصى (25%)، المستخدم، والمتبقي */
     public static function advanceLimitForEmployee(int $employeeId): array
     {
-        $emp = Database::query("SELECT base_salary FROM employees WHERE id = ?", [$employeeId])->fetch();
-        $salary = (float)($emp['base_salary'] ?? 0);
-        // احتياطي: آخر راتب مسجل في كشوف الرواتب
-        if ($salary <= 0) {
-            $payroll = Database::query(
-                "SELECT base_salary FROM payrolls WHERE employee_id = ? ORDER BY period DESC, id DESC LIMIT 1",
-                [$employeeId]
-            )->fetch();
-            $salary = (float)($payroll['base_salary'] ?? 0);
-        }
-        $max = $salary * 0.25;
-        $start = date('Y-m-01');
-        $end = date('Y-m-01', strtotime('+1 month'));
-        $templateId = (int) Database::query("SELECT id FROM approval_templates WHERE code = 'hr_advance' LIMIT 1")->fetchColumn();
-        $used = 0.0;
-        if ($templateId) {
-            $used = (float) Database::query(
-                "SELECT COALESCE(SUM(amount), 0) FROM requests
-                 WHERE template_id = ? AND requester_employee_id = ? AND status IN ('pending','approved')
-                   AND created_at >= ? AND created_at < ?",
-                [$templateId, $employeeId, $start, $end]
-            )->fetchColumn();
-        }
-        $out = [
-            'salary' => $salary,
-            'max' => $max,
-            'used' => $used,
-            'remaining' => max(0.0, $max - $used),
-        ];
-        if ($salary <= 0) {
-            $out['error'] = 'لم يُعثر على راتب مسجل للموظف. يرجى مراجعة قسم الموارد البشرية لتعبئة الراتب الأساسي.';
-        }
-        return $out;
+        return AdvancePolicyService::snapshot($employeeId);
     }
 
     public static function advanceLimitForUser(int $userId): array
     {
-        $user = self::getUserWithPosition($userId);
-        $employeeId = (int)($user['employee_id'] ?? 0);
-        if (!$employeeId) {
-            return ['salary' => 0.0, 'max' => 0.0, 'used' => 0.0, 'remaining' => 0.0, 'error' => 'الموظف غير مرتبط بحساب مستخدم'];
-        }
-        return self::advanceLimitForEmployee($employeeId);
+        $employeeId = (int) Database::query('SELECT id FROM employees WHERE user_id=?', [$userId])->fetchColumn();
+        return $employeeId ? AdvancePolicyService::snapshot($employeeId) : ['salary'=>0,'max'=>0,'remaining'=>0,'error'=>'الموظف غير مرتبط بحساب مستخدم'];
     }
 
     private static function validateAdvanceRequest(int $templateId, array $payload, ?int $requesterEmployeeId, ?int $requestId = null): void
     {
         $template = WorkflowTemplateService::getTemplate($templateId);
-        if (!$template || !in_array($template['code'], ['hr_advance', 'hr_exceptional_advance'], true)) return;
-        $amount = (float)($payload['amount'] ?? 0);
-        if ($amount <= 0) return;
-        $employeeId = (int)($payload['employee_id'] ?? $requesterEmployeeId ?? 0);
-        if (!$employeeId) throw new \RuntimeException('لا يمكن التحقق من الراتب: الموظف غير محدد');
-        $limit = self::advanceLimitForEmployee($employeeId);
-        if ($limit['salary'] <= 0) {
-            throw new \RuntimeException('لا يمكن التحقق من الراتب: الراتب الأساسي غير محدد للموظف');
-        }
-        // عند التحقق من طلب موجود نستثني مبلغه ليتمكن المستخدم من إعادة إرساله
-        $current = 0.0;
-        if ($requestId) {
-            $current = (float)(Database::query("SELECT amount FROM requests WHERE id = ?", [$requestId])->fetchColumn() ?: 0);
-        }
-        if ($amount - $current > $limit['remaining']) {
-            throw new \RuntimeException('المبلغ المطلوب أعلى من المسموح، يرجى مراجعة قسم الموارد البشرية');
-        }
+        if (!$template || !AdvancePolicyService::isAdvance($template['code'])) return;
+        AdvancePolicyService::validate($template['code'], $payload, (int)($payload['employee_id'] ?? $requesterEmployeeId), $requestId);
+    }
+
+    private static function advanceMutation(int $requestId, callable $action): void
+    {
+        $request = self::getRequest($requestId);
+        if (!$request || !AdvancePolicyService::isAdvance($request['template_code'])) { $action(); return; }
+        AdvancePolicyService::locked((int)$request['requester_employee_id'], function () use ($requestId, $action) {
+            Database::query('SELECT id FROM requests WHERE id=? FOR UPDATE', [$requestId])->fetch();
+            $action();
+        });
     }
 
     /** يتحقق من تطابق مدة الإجازة اليومية مع نوعها (قصيرة بدون راتب <= 3 أيام، طويلة بدون راتب >= 4 أيام) */
@@ -210,10 +168,10 @@ class WorkflowEngine
 
     private static function fillAdvanceDefaults(array $template, array $payload): array
     {
-        if (($template['code'] ?? '') !== 'hr_advance') return $payload;
-        if (!isset($payload['advance_type'])) $payload['advance_type'] = 'short';
+        if (!AdvancePolicyService::isAdvance($template['code'] ?? $template['template_code'] ?? '')) return $payload;
+        $payload['advance_type'] = ($template['code'] ?? $template['template_code'] ?? '') === 'hr_long_advance' ? 'long' : 'short';
         if (!isset($payload['installments']) || $payload['installments'] === null || $payload['installments'] === '') {
-            $payload['installments'] = 1;
+            $payload['installments'] = $payload['advance_type'] === 'long' ? 2 : 1;
         }
         return $payload;
     }
@@ -230,6 +188,14 @@ class WorkflowEngine
         }
 
         $payload = self::fillAdvanceDefaults($template, self::extractPayload($template['fields'], $data));
+        if (AdvancePolicyService::isAdvance($template['code'])) {
+            $payload['employee_id'] = (int)(($payload['employee_id'] ?? 0) ?: ($user['employee_id'] ?? 0));
+            AdvancePolicyService::assertApplicant($template['code'], $payload['employee_id'], $userId);
+            if ($skipAuth && isset($data['entity_id'])) $payload['entity_id'] = (int)$data['entity_id'];
+            $user['employee_id'] = $payload['employee_id'];
+            $user['position_id'] = Database::query('SELECT id FROM org_positions WHERE employee_id=? AND is_active=1 ORDER BY id LIMIT 1', [$payload['employee_id']])->fetchColumn() ?: null;
+        }
+
         self::validateAdvanceRequest($templateId, $payload, (int)($user['employee_id'] ?? 0), null);
         self::validateLeaveRequest($templateId, $payload);
         self::validateMissingAttendanceRequest($templateId, $payload);
@@ -256,6 +222,11 @@ class WorkflowEngine
 
     public static function submitRequest(int $requestId, int $userId): void
     {
+        self::advanceMutation($requestId, fn() => self::submitRequestUnlocked($requestId, $userId));
+    }
+
+    private static function submitRequestUnlocked(int $requestId, int $userId): void
+    {
         $req = self::getRequest($requestId);
         if (!$req) throw new \RuntimeException('الطلب غير موجود');
         if ((int)$req['requester_id'] !== $userId) throw new \RuntimeException('ليس لديك صلاحية إرسال هذا الطلب');
@@ -264,6 +235,16 @@ class WorkflowEngine
         }
 
         $payload = json_decode($req['data_json'] ?? '{}', true);
+        if (AdvancePolicyService::isAdvance($req['template_code'])) {
+            AdvancePolicyService::assertApplicant($req['template_code'], (int)$req['requester_employee_id'], $userId);
+            $snapshot = AdvancePolicyService::validate($req['template_code'], $payload, (int)$req['requester_employee_id'], $requestId);
+            Database::query("UPDATE workflow_tasks SET status='cancelled' WHERE request_id=? AND status='pending'", [$requestId]);
+            AdvancePolicyService::syncRequest($req, $snapshot);
+            Database::query('UPDATE requests SET advance_policy_period=? WHERE id=?', [date('Y-m'), $requestId]);
+            $req = self::getRequest($requestId);
+            $payload = $req['data'];
+        }
+
         self::validateAdvanceRequest((int)$req['template_id'], $payload, (int)($req['requester_employee_id'] ?? 0), $requestId);
         self::validateLeaveRequest((int)$req['template_id'], $payload);
         self::validateMissingAttendanceRequest((int)$req['template_id'], $payload);
@@ -294,12 +275,23 @@ class WorkflowEngine
 
     public static function saveDraftData(int $requestId, array $data, int $userId): void
     {
+        self::advanceMutation($requestId, fn() => self::saveDraftDataUnlocked($requestId, $data, $userId));
+    }
+
+    private static function saveDraftDataUnlocked(int $requestId, array $data, int $userId): void
+    {
         $req = self::getRequest($requestId);
         if (!$req) throw new \RuntimeException('الطلب غير موجود');
         if ((int)$req['requester_id'] !== $userId) throw new \RuntimeException('ليس لديك صلاحية تعديل هذا الطلب');
         if (!in_array($req['status'], ['draft', 'returned_for_edit'], true)) throw new \RuntimeException('الطلب ليس في حالة قابلة للتعديل');
 
         $payload = self::fillAdvanceDefaults($req, self::extractPayload($req['fields'], $data));
+        if (AdvancePolicyService::isAdvance($req['template_code'])) {
+            if ((int)($payload['employee_id'] ?? $req['requester_employee_id']) !== (int)$req['requester_employee_id']) throw new \RuntimeException('لا يمكن تغيير موظف الطلب؛ ألغ الطلب وأنشئ طلباً جديداً');
+            $payload['employee_id'] = (int)$req['requester_employee_id'];
+            foreach (['entity_id','entity_type','advance_snapshot'] as $key) if (isset($req['data'][$key])) $payload[$key] = $req['data'][$key];
+        }
+
         $amount = self::extractAmount($req, $payload);
         $title = (string)($data['title'] ?? $req['title']);
         Database::query(
@@ -310,11 +302,18 @@ class WorkflowEngine
 
     public static function resubmit(int $requestId, array $data, int $userId): void
     {
+        self::advanceMutation($requestId, fn() => self::resubmitUnlocked($requestId, $data, $userId));
+    }
+
+    private static function resubmitUnlocked(int $requestId, array $data, int $userId): void
+    {
         $req = self::getRequest($requestId);
         if (!$req) throw new \RuntimeException('الطلب غير موجود');
         if ((int)$req['requester_id'] !== $userId) throw new \RuntimeException('ليس لديك صلاحية تعديل هذا الطلب');
         if ($req['status'] !== 'returned_for_edit') throw new \RuntimeException('الطلب ليس في حالة إعادة الإرسال');
         self::saveDraftData($requestId, $data, $userId);
+        if (AdvancePolicyService::isAdvance($req['template_code'])) { self::submitRequestUnlocked($requestId, $userId); return; }
+
         self::logHistory($requestId, 'resubmitted', null, $userId, (string)($data['notes'] ?? ''));
         Database::query("UPDATE requests SET status = 'pending' WHERE id = ?", [$requestId]);
         // طلبات المخطط الديناميكي: إلغاء المهام القديمة وإعادة السير من البداية
@@ -350,6 +349,11 @@ class WorkflowEngine
 
     public static function editRequest(int $requestId, array $data, int $userId): void
     {
+        self::advanceMutation($requestId, fn() => self::editRequestUnlocked($requestId, $data, $userId));
+    }
+
+    private static function editRequestUnlocked(int $requestId, array $data, int $userId): void
+    {
         $req = self::getRequest($requestId);
         if (!$req) throw new \RuntimeException('الطلب غير موجود');
         if (!self::canEditRequest($requestId, $userId)) throw new \RuntimeException('ليس لديك صلاحية تعديل هذا الطلب');
@@ -358,6 +362,12 @@ class WorkflowEngine
         }
 
         $payload = self::fillAdvanceDefaults($req, self::extractPayload($req['fields'], $data));
+        if (AdvancePolicyService::isAdvance($req['template_code'])) {
+            if ((int)($payload['employee_id'] ?? $req['requester_employee_id']) !== (int)$req['requester_employee_id']) throw new \RuntimeException('لا يمكن تغيير موظف الطلب؛ ألغ الطلب وأنشئ طلباً جديداً');
+            $payload['employee_id'] = (int)$req['requester_employee_id'];
+            foreach (['entity_id','entity_type','advance_snapshot'] as $key) if (isset($req['data'][$key])) $payload[$key] = $req['data'][$key];
+        }
+
         self::validateAdvanceRequest((int)$req['template_id'], $payload, (int)($req['requester_employee_id'] ?? 0), $requestId);
         self::validateMissingAttendanceRequest((int)$req['template_id'], $payload);
         $amount = self::extractAmount($req, $payload);
@@ -369,6 +379,11 @@ class WorkflowEngine
             "UPDATE requests SET title = ?, amount = ?, data_json = ?, updated_at = NOW() WHERE id = ?",
             [$title, $amount, json_encode($payload, JSON_UNESCAPED_UNICODE), $requestId]
         );
+
+        if (AdvancePolicyService::isAdvance($req['template_code'])) {
+            $fresh = self::getRequest($requestId);
+            AdvancePolicyService::syncRequest($fresh, AdvancePolicyService::snapshot((int)$fresh['requester_employee_id'], $requestId));
+        }
 
         if ($req['status'] === 'pending') {
             $logNote = $notes ?: ($isManager ? 'تم تعديل الطلب من قبل المدير' : 'تم تعديل الطلب');
@@ -389,6 +404,11 @@ class WorkflowEngine
     }
 
     public static function decide(int $requestId, string $action, string $notes, int $userId): void
+    {
+        self::advanceMutation($requestId, fn() => self::decideUnlocked($requestId, $action, $notes, $userId));
+    }
+
+    private static function decideUnlocked(int $requestId, string $action, string $notes, int $userId): void
     {
         $req = self::getRequest($requestId);
         if (!$req) throw new \RuntimeException('الطلب غير موجود');
@@ -459,6 +479,11 @@ class WorkflowEngine
 
     public static function cancelRequest(int $requestId, int $userId): void
     {
+        self::advanceMutation($requestId, fn() => self::cancelRequestUnlocked($requestId, $userId));
+    }
+
+    private static function cancelRequestUnlocked(int $requestId, int $userId): void
+    {
         $req = self::getRequest($requestId);
         if (!$req) throw new \RuntimeException('الطلب غير موجود');
         if ((int)$req['requester_id'] !== $userId) throw new \RuntimeException('ليس لديك صلاحية إلغاء هذا الطلب');
@@ -469,6 +494,7 @@ class WorkflowEngine
         if (!empty($req['workflow_version_id'])) {
             Database::query("UPDATE workflow_tasks SET status = 'cancelled' WHERE request_id = ? AND status = 'pending'", [$requestId]);
         }
+        if (AdvancePolicyService::isAdvance($req['template_code'])) self::triggerOutcomeHandlers($req, 'cancelled', $userId, '');
         self::logHistory($requestId, 'cancelled', null, $userId, '');
     }
 

@@ -9,14 +9,13 @@
 </style>
 
 <div class="page-head">
-  <h2><i class="fa-solid fa-hand-holding-dollar"></i> تسليم السلف</h2>
+  <h2><i class="fa-solid fa-hand-holding-dollar"></i> اعتماد وتسليم السلف</h2>
   <a href="/accounting/advances" class="btn btn-secondary">عرض كل السلف ومسار موافقاتها</a>
 </div>
 
 <div class="alert alert-info">
   <i class="fa-solid fa-circle-info"></i>
-  تظهر هنا طلبات السلف التي أكملت جميع مراحل الموافقة المطلوبة ولم تُسلَّم بعد. عند الضغط على "تسليم السلفة"
-  يُنشأ قيد محاسبي تلقائياً وتُرسل إشعار فوري لمقدم الطلب بنجاح التسليم.
+  تظهر الطلبات المكتملة الموافقات. يعتمد المحاسب الطلب للصرف أولاً، ثم يؤكد مسؤول التسليم صرفه. يُنشأ القيد المحاسبي عند التسليم الفعلي فقط.
 </div>
 
 <?php if (!$advances): ?>
@@ -28,7 +27,7 @@
 <div class="card disb-card">
   <div class="disb-row">
     <div class="disb-info">
-      <h3 style="margin:0 0 8px"><?= Helpers::e($a['full_name']) ?> <span class="badge badge-success">معتمدة</span></h3>
+      <h3 style="margin:0 0 8px"><?= Helpers::e($a['full_name']) ?> <span class="badge badge-success"><?= !empty($a['accountant_approved_at']) ? 'جاهزة للصرف' : 'بانتظار اعتماد المحاسب' ?></span></h3>
       <table>
         <tr><td>القسم</td><td><?= Helpers::e($a['department'] ?? '-') ?></td></tr>
         <tr><td>المبلغ</td><td><strong><?= Helpers::money($a['amount']) ?></strong></td></tr>
@@ -39,7 +38,12 @@
       <a href="/accounting/advances/<?= $a['id'] ?>" style="font-size:13px">عرض تفاصيل الطلب ومسار الموافقات</a>
     </div>
 
-    <?php if (Auth::can('payroll.manage') || Auth::can('accounting.manage')): ?>
+    <?php if (empty($a['accountant_approved_at']) && Auth::can('accounting.manage')): ?>
+    <form method="post" action="/accounting/advances/<?= (int)$a['id'] ?>/approve-payment">
+      <button class="btn btn-primary">اعتماد المحاسب للصرف</button>
+    </form>
+    <?php endif; ?>
+    <?php if (!empty($a['accountant_approved_at']) && (Auth::can('payroll.manage') || Auth::can('accounting.manage'))): ?>
     <form method="post" action="/accounting/advances/<?= $a['id'] ?>/pay" class="disb-form" onsubmit="return confirm('تأكيد تسليم السلفة؟ سيُنشأ قيد محاسبي تلقائياً وتُرسل إشعار للموظف.')">
       <input type="hidden" name="redirect_to" value="/accounting/advances/disbursement">
       <div class="form-inline" style="gap:10px; margin-bottom:10px">

@@ -107,10 +107,14 @@
   <a href="/workflows/create/<?= (int)$exceptionalAdvanceTemplateId ?>" class="res-card">
     <div class="icon"><i class="fa-solid fa-bolt"></i></div>
     <div class="title">سلفة استثنائية</div>
-    <div class="desc">طلب سلفة استثنائية أو طويلة الأجل</div>
+    <div class="desc">طلب سلفة قبل يوم 13 عن طريق الموارد البشرية</div>
   </a>
   <?php endif; ?>
 
+  <?php $longAdvanceTemplateId = (int)(App\Core\Database::query("SELECT id FROM approval_templates WHERE code='hr_long_advance' AND is_active=1 LIMIT 1")->fetchColumn() ?: 0); ?>
+  <?php if ($longAdvanceTemplateId && App\Core\AdvancePolicyService::canManageHr((int)Auth::id())): ?>
+  <a href="/workflows/create/<?= $longAdvanceTemplateId ?>" class="res-card"><div class="icon"><i class="fa-solid fa-calendar-days"></i></div><div class="title">سلفة طويلة الأجل</div><div class="desc">طلب مقسط مع كشف المديونية ومسار الموافقات</div></a>
+  <?php endif; ?>
   <?php if (Auth::can('hr.leave_balance')): ?>
   <a href="/hr/leave-balances" class="res-card">
     <div class="icon"><i class="fa-solid fa-scale-balanced"></i></div>

@@ -41,6 +41,15 @@
   </div>
 </div>
 
+<?php if (\App\Core\AdvancePolicyService::isAdvance($request['template_code'])): ?>
+<?php $advanceSnapshot = \App\Core\AdvancePolicyService::snapshot((int)$request['requester_employee_id'], (int)$request['id']); require BASE_PATH . '/app/Views/accounting/_advance_snapshot.php'; ?>
+<?php if (!empty($request['data']['advance_snapshot'])): ?>
+<details class="card"><summary>كشف الاستحقاق المحفوظ عند تقديم الطلب</summary>
+<?php $advanceSnapshot = $request['data']['advance_snapshot']; require BASE_PATH . '/app/Views/accounting/_advance_snapshot.php'; ?>
+</details>
+<?php endif; ?>
+<?php endif; ?>
+
 <?php if (!empty($graph) && $graph['nodes']): ?>
 <?php require BASE_PATH . '/app/Views/workflows/_graph.php'; ?>
 <?php endif; ?>

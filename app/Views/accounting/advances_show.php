@@ -32,7 +32,14 @@
 
   <div class="flex-between" style="margin-top:15px">
     <a href="/accounting/advances" class="btn btn-light">العودة للقائمة</a>
-    <?php if ($advance['status'] === 'approved' && (float)($advance['paid_amount'] ?? 0) <= 0 && (\App\Core\Auth::can('payroll.manage') || \App\Core\Auth::can('accounting.manage'))): ?>
+    <?php if ($advance['status'] === 'approved' && empty($advance['accountant_approved_at']) && \App\Core\Auth::can('accounting.manage')): ?>
+    <form method="post" action="/accounting/advances/<?= (int)$advance['id'] ?>/approve-payment"><button class="btn btn-primary">اعتماد المحاسب للصرف</button></form>
+    <?php endif; ?>
+    <?php if (in_array($advance['status'], ['paid','settled'], true) && !empty($advance['paid_by'])): ?>
+    <a class="btn btn-primary" href="/accounting/advances/<?= (int)$advance['id'] ?>/receipt" target="_blank">طباعة سند تم الصرف</a>
+    <?php endif; ?>
+
+    <?php if ($advance['status'] === 'approved' && !empty($advance['accountant_approved_at']) && (float)($advance['paid_amount'] ?? 0) <= 0 && (\App\Core\Auth::can('payroll.manage') || \App\Core\Auth::can('accounting.manage'))): ?>
     <form method="post" action="/accounting/advances/<?= $advance['id'] ?>/pay" onsubmit="return confirm('تأكيد تسليم السلفة؟')" id="disburse-form">
       <div class="form-inline" style="gap:10px; margin-bottom:10px">
         <div class="form-row">
@@ -125,3 +132,5 @@ function togglePaymentMethod() {
   </form>
 </div>
 <?php endif; ?>
+
+<?php $advanceSnapshot = \App\Core\AdvancePolicyService::snapshot((int)$advance['employee_id'], $workflowRequestId ?: null); require BASE_PATH . '/app/Views/accounting/_advance_snapshot.php'; ?>

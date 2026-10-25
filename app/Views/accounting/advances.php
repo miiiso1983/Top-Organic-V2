@@ -1,7 +1,7 @@
 <?php use App\Core\Helpers; ?>
 <?php $statusLabels = ['pending'=>'بانتظار الموافقة','approved'=>'معتمدة','rejected'=>'مرفوضة','paid'=>'تم الصرف','settled'=>'مسددة']; ?>
 <div class="card">
-  <h3>طلب سلفة (قصيرة/طويلة الأجل — يخضع لمسار الموافقات)</h3>
+  <h3>طلب سلفة شهرية أو استثنائية أو طويلة الأجل</h3>
   <form method="post" action="/accounting/advances" class="form-inline" id="advance-form" onsubmit="return validateAdvanceForm(this);">
     <div class="form-row"><label>الموظف</label>
       <select name="employee_id" required>
@@ -11,8 +11,9 @@
       </select>
     </div>
     <div class="form-row"><label>المبلغ</label><input type="number" name="amount" id="advance-amount-input" step="0.01" min="0.01" required oninput="autoFillInstallmentAmount()"></div>
+    <div class="form-row"><label>مسار الطلب</label><select name="request_kind"><option value="monthly">شهرية — من يوم 13</option><option value="exceptional">استثنائية — الموارد البشرية فقط</option></select></div>
     <div class="form-row"><label>النوع</label>
-      <select name="advance_type" id="advance-type-select" onchange="toggleAdvanceFields()"><option value="short">قصيرة الأجل</option><option value="long">طويلة الأجل</option></select>
+      <select name="advance_type" id="advance-type-select" onchange="toggleAdvanceFields()"><option value="short">شهرية / استثنائية</option><option value="long">طويلة الأجل</option></select>
     </div>
     <div class="form-row" id="installments-row"><label>عدد الأقساط</label><input type="number" name="installments" id="advance-installments-input" value="1" min="1" oninput="autoFillInstallmentAmount()"></div>
     <div class="form-row" id="installment-method-row" style="display:none"><label>طريقة احتساب القسط</label>
@@ -27,6 +28,7 @@
     <div class="form-row"><label>السبب</label><input name="reason"></div>
     <button class="btn btn-success">تقديم الطلب</button>
   </form>
+  <p>الشهرية والاستثنائية: الأقل من 25% من الراتب وصافي الاستحقاق بعد كامل المديونية والاستقطاعات. طلب واحد قائم شهرياً؛ المرفوض والملغى لا يمنعان البديل. الاستثنائية وطويلة الأجل تقدمها الموارد البشرية مع السبب.</p>
   <p class="text-muted" style="margin-top:10px">السلف طويلة الأجل تخضع للموافقات وتولد جدول سداد تلقائياً؛ عند اختيار "مبلغ ثابت شهرياً" يكفي إدخال عدد الأقساط فقط ويُحسب مبلغ القسط الشهري تلقائياً بقسمة المبلغ على عدد الأقساط دون الحاجة لكتابته، أو اختيار "نسبة % من الراتب الأساسي" لتحديد القسط كنسبة من الراتب (يُحسب عدد الأقساط حينئذ تلقائياً).</p>
   <script>
   function toggleAdvanceFields() {
@@ -37,6 +39,7 @@
           if ((parseInt(installmentsField.value) || 1) < 2) installmentsField.value = 2; // السلفة طويلة الأجل تتطلب قسطين على الأقل منطقياً
           toggleInstallmentMethod();
       } else {
+          document.getElementById('advance-installments-input').value = 1;
           document.getElementById('installment-amount-row').style.display = 'none';
           document.getElementById('installment-percentage-row').style.display = 'none';
       }
@@ -74,7 +77,7 @@
 
 <div class="card">
   <div class="flex-between" style="margin-bottom:15px;flex-wrap:wrap;gap:10px">
-    <h3 style="margin:0">سجل السلف</h3>
+    <h3 style="margin:0">سجل السلف</h3><a class="btn btn-primary" href="/accounting/advances/disbursement">اعتماد وتسليم السلف</a>
     <div class="tabs">
       <a href="?scope=current" class="tab <?= $scope === 'current' ? 'active' : '' ?>">الحالية</a>
       <a href="?scope=previous" class="tab <?= $scope === 'previous' ? 'active' : '' ?>">السابقة</a>
@@ -124,7 +127,7 @@
         <?php if ($a['workflow_request_id']): ?>
         <a href="/workflows/requests/<?= $a['workflow_request_id'] ?>" class="btn btn-sm btn-secondary">Workflow</a>
         <?php endif; ?>
-        <?php if ($a['status'] === 'approved' && (float)($a['paid_amount'] ?? 0) <= 0 && (\App\Core\Auth::can('payroll.manage') || \App\Core\Auth::can('accounting.manage'))): ?>
+        <?php if ($a['status'] === 'approved' && !empty($a['accountant_approved_at']) && (float)($a['paid_amount'] ?? 0) <= 0 && (\App\Core\Auth::can('payroll.manage') || \App\Core\Auth::can('accounting.manage'))): ?>
         <form method="post" action="/accounting/advances/<?= $a['id'] ?>/pay" style="display:inline" onsubmit="return confirm('تأكيد تسليم السلفة؟')">
           <button class="btn btn-sm btn-primary">تسليم السلفة</button>
         </form>

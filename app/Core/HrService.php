@@ -792,7 +792,7 @@ class HrService
     /**
      * حساب مكوّنات الراتب للموظف في فترة محددة
      */
-    public static function calculatePayrollComponents(int $employeeId, string $period, ?int $payrollId = null, ?string $asOfDate = null): array
+    public static function calculatePayrollComponents(int $employeeId, string $period, ?int $payrollId = null, ?string $asOfDate = null, bool $biometricAccrual = false): array
     {
         $employee = Database::query("SELECT * FROM employees WHERE id = ?", [$employeeId])->fetch();
         if (!$employee || !self::isEmployeeFileOpen($employeeId)) {
@@ -809,7 +809,7 @@ class HrService
         if ($effectiveAsOfDate !== null) {
             $effectiveAsOfDate = max($periodStart, min($effectiveAsOfDate, $periodEnd));
         }
-        $isPartialMonth = $effectiveAsOfDate !== null && $effectiveAsOfDate < $periodEnd;
+        $isPartialMonth = $biometricAccrual || ($effectiveAsOfDate !== null && $effectiveAsOfDate < $periodEnd);
         $adjustmentsEndDate = $isPartialMonth ? $effectiveAsOfDate : $periodEnd;
 
         // المكافئات والخصومات المعتمدة في الفترة (حتى تاريخ الاحتساب عند التفعيل الجزئي للشهر)
@@ -854,7 +854,7 @@ class HrService
 
         // احتساب أيام الدوام والغياب من البصمات/الورديات/الإجازات (أو من التنبيهات حسب الإعداد)
         // تُحدَّد حتى تاريخ الاحتساب (اليوم الحالي) عند احتساب الشهر الجاري قبل انتهائه
-        $attendance = self::calculateAttendanceSummary($employeeId, $period, $effectiveAsOfDate);
+        $attendance = self::calculateAttendanceSummary($employeeId, $period, $effectiveAsOfDate, $biometricAccrual);
         $absenceDays = (int) $attendance['deducted_days'];
 
         // الأساس المعدّل الشهري = (الأساسي الاسمي + الزيادات) − تخفيض الراتب المعتمد الخاص بهذه الفترة فقط (لا يتراكم من الأشهر السابقة)
@@ -997,7 +997,7 @@ class HrService
      * أيام العمل المتوقعة (حسب الوردية والعطل الرسمية) مقابل أيام الدوام الفعلية من البصمات والإجازات المعتمدة.
      * الوضع 'alerts' يعود للسلوك القديم (عدّ تنبيهات عدم البصمة).
      */
-    public static function calculateAttendanceSummary(int $employeeId, string $period, ?string $asOfDate = null): array
+    public static function calculateAttendanceSummary(int $employeeId, string $period, ?string $asOfDate = null, bool $forceBiometric = false): array
     {
         $periodStart = $period . '-01';
         $periodEnd = date('Y-m-t', strtotime($periodStart));
@@ -1005,7 +1005,7 @@ class HrService
             // تحديد أيام الدوام/الغياب حتى تاريخ معين فقط (احتساب جزئي للشهر الجاري)
             $periodEnd = max($periodStart, min($asOfDate, $periodEnd));
         }
-        $mode = (string) Settings::get('payroll_absence_mode', 'attendance');
+        $mode = $forceBiometric ? 'attendance' : (string) Settings::get('payroll_absence_mode', 'attendance');
         $result = [
             'mode' => $mode,
             'expected_days' => 0,
