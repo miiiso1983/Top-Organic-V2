@@ -3536,13 +3536,8 @@ class ApiController extends Controller
                 "SELECT id, name FROM departments WHERE is_active = 1 ORDER BY name"
             )->fetchAll();
         }
-        if ($req['template_code'] === 'hr_advance') {
-            $req['advance_limit'] = WorkflowEngine::advanceLimitForUser(ApiAuth::id());
-        } elseif ($req['template_code'] === 'hr_exceptional_advance') {
-            $employeeId = (int)($req['data']['employee_id'] ?? 0);
-            if ($employeeId) {
-                $req['advance_limit'] = WorkflowEngine::advanceLimitForEmployee($employeeId);
-            }
+        if (\App\Core\AdvancePolicyService::isAdvance($req['template_code'])) {
+            $req['advance_limit'] = \App\Core\AdvancePolicyService::snapshot((int)$req['requester_employee_id'], (int)$req['id']);
         }
         // إثراء بيانات مقدم الطلب (القسم والمسمى الوظيفي) لشاشة التفاصيل
         if (!empty($req['requester_employee_id'])) {

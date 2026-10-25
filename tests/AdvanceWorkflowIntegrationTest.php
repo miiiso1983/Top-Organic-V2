@@ -124,6 +124,15 @@ namespace {
     ob_start();$controller->printAdvanceReceipt((string)$aid);$receipt=ob_get_clean();check(str_contains($receipt,'تم الصرف'),'Printed receipt');
     // Long-term has its own approvals, can coexist with monthly, and is not capped at 25%.
     $long=$create('hr_long_advance',4,600000,6);
+    $formController = new class extends App\Controllers\WorkflowController {
+        public array $captured = [];
+        protected function view(string $viewTemplate, array $data = []): void { $this->captured = $data; }
+    };
+    $_SESSION=['user_id'=>4,'role_name'=>'مدير قسم الموارد البشرية','perms'=>[]];
+    $formController->editRequestForm((string)$long);
+    check($formController->captured['advanceLimit']['working_days']===20,'Edit form must use beneficiary entitlement, not HR requester salary');
+    $_SESSION=['user_id'=>6,'perms'=>['accounting.manage']];
+
     foreach([2,3] as $actor){WorkflowEngine::decide($long,'approved','',$actor);check(WorkflowEngine::getRequest($long)['status']==='pending','Long requires HR final approval');}
     WorkflowEngine::decide($long,'approved','',4);check(WorkflowEngine::getRequest($long)['status']==='approved','Long final HR approval');
     $longAid=(int)WorkflowEngine::getRequest($long)['data']['entity_id'];

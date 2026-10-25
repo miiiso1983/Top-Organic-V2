@@ -154,7 +154,7 @@ $(document).ready(function() {
             return;
         }
         $('#advance-limit-info').text('جاري تحميل الحد المسموح...');
-        $.getJSON('/workflows/employees/' + employeeId + '/advance-limit', function(res) {
+        $.getJSON('/workflows/employees/' + employeeId + '/advance-limit?request_id=<?= (int)($request['id'] ?? 0) ?>', function(res) {
             var d = res.data || {};
             if ((d.salary || 0) > 0) {
                 $('#advance-limit-info').text(

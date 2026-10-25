@@ -282,13 +282,8 @@ class WorkflowController extends Controller
             Response::abort(403, 'لا يمكن تعديل هذا الطلب');
         }
         $advanceLimit = null;
-        if ($req['template_code'] === 'hr_advance') {
-            $advanceLimit = WorkflowEngine::advanceLimitForUser((int) Auth::id());
-        } elseif ($req['template_code'] === 'hr_exceptional_advance') {
-            $employeeId = (int)($req['data']['employee_id'] ?? 0);
-            if ($employeeId) {
-                $advanceLimit = WorkflowEngine::advanceLimitForEmployee($employeeId);
-            }
+        if (\App\Core\AdvancePolicyService::isAdvance($req['template_code'])) {
+            $advanceLimit = \App\Core\AdvancePolicyService::snapshot((int)$req['requester_employee_id'], (int)$req['id']);
         }
         $this->view('workflows/request_form', [
             'title' => 'تعديل ' . $req['template_name'],
@@ -345,7 +340,9 @@ class WorkflowController extends Controller
             Response::json(['ok' => false, 'error' => 'الموظف غير موجود'], 404);
             return;
         }
-        Response::json(['ok' => true, 'data' => WorkflowEngine::advanceLimitForEmployee($employeeId)]);
+        $excludeRequest = (int)($_GET['request_id'] ?? 0);
+        if ($excludeRequest && !Database::query('SELECT id FROM requests WHERE id=? AND requester_employee_id=?', [$excludeRequest,$employeeId])->fetchColumn()) $excludeRequest = 0;
+        Response::json(['ok' => true, 'data' => \App\Core\AdvancePolicyService::snapshot($employeeId, $excludeRequest ?: null)]);
     }
 
     public function submitRequest(string $id): void
