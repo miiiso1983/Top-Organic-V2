@@ -2,7 +2,7 @@
 <?php
 $types = [
     'payroll'=>'تقرير الرواتب','bonuses'=>'تقرير المكافآت','deductions'=>'تقرير الخصومات','raises'=>'تقرير الزيادات','penalties'=>'تقرير الجزاءات',
-    'advances'=>'تقرير السلف','long_advances'=>'تقرير السلف طويلة الأجل','attendance'=>'تقرير الحضور','delays'=>'تقرير التأخير','absences'=>'تقرير الغياب',
+    'advances'=>'تقرير السلف','long_advances'=>'تقرير السلف طويلة الأجل','attendance'=>'تقرير الحضور','attendance_matrix'=>'تقرير الحضور اليومي حسب الموظف','delays'=>'تقرير التأخير','absences'=>'تقرير الغياب',
     'overtime'=>'تقرير العمل الإضافي','leaves'=>'تقرير الإجازات','exits'=>'تقرير الأذونات','evaluations'=>'تقرير الأداء الوظيفي (KPI)','location'=>'تقرير مراقبة المواقع',
     'monthly_performance'=>'تقرير الأداء الشهري للمندوبين/الموظفين','achievement'=>'تقرير الإنجاز','regularity'=>'تقرير الانتظام','payroll_summary'=>'ملخص الرواتب الشهري','work_resumptions'=>'تقرير المباشرات','resignations'=>'تقرير الإغلاقات','fingerprint_forgiveness'=>'طلبات نسيان البصمة','custom'=>'تقارير مخصصة'
 ];
@@ -16,14 +16,29 @@ $moneyCols = $report['money'] ?? [];
 $columns = $report['columns'] ?? [];
 $rows = $report['rows'] ?? [];
 $f = $filters;
+$isMatrix = $type === 'attendance_matrix';
 ?>
+<?php if ($isMatrix): ?>
+<style>
+.attendance-matrix-scroll{overflow:auto;max-height:72vh;border:1px solid var(--border);border-radius:8px}
+.attendance-matrix{border-collapse:separate;border-spacing:0;min-width:100%}
+.attendance-matrix th,.attendance-matrix td{white-space:nowrap;text-align:center;border-inline-end:1px solid var(--border-light)}
+.attendance-matrix th{position:sticky;top:0;z-index:2;background:var(--surface-alt)}
+.attendance-matrix th:first-child,.attendance-matrix td:first-child{position:sticky;right:0;text-align:right;min-width:190px;background:var(--surface);z-index:1}
+.attendance-matrix th:first-child{z-index:3;background:var(--surface-alt)}
+.matrix-present{background:var(--success-bg);color:var(--success-text);padding:4px 10px;border-radius:6px;display:inline-block}
+.matrix-absent{background:var(--danger-bg);color:var(--danger-text);padding:4px 10px;border-radius:6px;display:inline-block}
+.matrix-future{color:var(--text-muted)}
+@media print{.attendance-matrix-scroll{max-height:none;overflow:visible}.attendance-matrix th,.attendance-matrix td{position:static!important}}
+</style>
+<?php endif; ?>
 <div class="card">
   <h3><i class="fa-solid fa-chart-column"></i> <?= Helpers::e($report['title']) ?></h3>
   <form method="get" action="/hr/reports" class="form-inline" style="flex-wrap:wrap">
     <div class="form-row"><label>التقرير</label>
       <select name="type" id="reportTypeSelect"><?php foreach ($types as $k => $v): ?><option value="<?= $k ?>" <?= $k === $type ? 'selected' : '' ?>><?= $v ?></option><?php endforeach; ?></select>
     </div>
-    <div class="form-row"><label>الفترة</label><input type="text" name="period" id="reportPeriod" value="<?= Helpers::e($f['period']) ?>" placeholder="YYYY-MM" title="عند تحديد الفترة تُتجاهل حقول من/إلى تاريخ"></div>
+    <div class="form-row"><label>الفترة</label><input type="text" name="period" id="reportPeriod" value="<?= Helpers::e($f['period']) ?>" placeholder="YYYY-MM" title="<?= $isMatrix ? 'في هذا التقرير تكون الأولوية لنطاق من/إلى تاريخ' : 'عند تحديد الفترة تُتجاهل حقول من/إلى تاريخ' ?>"></div>
     <div class="form-row" id="jobFilterRow" style="<?= $type === 'evaluations' ? '' : 'display:none' ?>">
       <label>الوظيفة <?= $type === 'evaluations' ? '<span style="color:var(--danger)">*</span>' : '' ?></label>
       <select name="job_id" id="reportJobSelect" <?= $type === 'evaluations' ? 'required' : '' ?>>
@@ -33,7 +48,7 @@ $f = $filters;
     </div>
     <div class="form-row rpt-generic"><label>من</label><input type="date" name="date_from" id="reportDateFrom" value="<?= Helpers::e($f['date_from']) ?>"></div>
     <div class="form-row rpt-generic"><label>إلى</label><input type="date" name="date_to" id="reportDateTo" value="<?= Helpers::e($f['date_to']) ?>"></div>
-    <div class="form-row rpt-generic" style="align-self:flex-end"><small class="text-muted">إذا حددت الفترة يُتجاهل من/إلى تاريخ تلقائياً</small></div>
+    <div class="form-row rpt-generic" style="align-self:flex-end"><small class="text-muted"><?= $isMatrix ? 'اختر من وإلى تاريخ، أو شهرًا. إدخال تاريخ واحد يعرض ذلك اليوم فقط.' : 'إذا حددت الفترة يُتجاهل من/إلى تاريخ تلقائياً' ?></small></div>
     <div class="form-row rpt-generic"><label>الموظف</label>
       <select name="employee_id"><option value="0">الكل</option><?php foreach ($employees as $e): ?><option value="<?= $e['id'] ?>" <?= $e['id'] == $f['employee_id'] ? 'selected' : '' ?>><?= Helpers::e($e['full_name']) ?></option><?php endforeach; ?></select>
     </div>
@@ -43,12 +58,20 @@ $f = $filters;
     <div class="form-row rpt-generic"><label>القسم</label>
       <select name="department_id"><option value="0">الكل</option><?php foreach ($departments as $d): ?><option value="<?= $d['id'] ?>" <?= $d['id'] == $f['department_id'] ? 'selected' : '' ?>><?= Helpers::e($d['name']) ?></option><?php endforeach; ?></select>
     </div>
-    <div class="form-row rpt-generic"><label>الحالة</label><input type="text" name="status" value="<?= Helpers::e($f['status']) ?>" placeholder="approved/pending..."></div>
+    <div class="form-row rpt-generic"><label><?= $isMatrix ? 'حالة الموظف' : 'الحالة' ?></label>
+    <?php if ($isMatrix): ?><select name="status"><option value="">كل الحالات</option><?php foreach (['active'=>'نشط','vacation'=>'إجازة','suspended'=>'موقوف','terminated'=>'منتهي الخدمة','resigned'=>'مستقيل'] as $value=>$label): ?><option value="<?= $value ?>" <?= $f['status'] === $value ? 'selected' : '' ?>><?= $label ?></option><?php endforeach; ?></select>
+    <?php else: ?><input type="text" name="status" value="<?= Helpers::e($f['status']) ?>" placeholder="approved/pending..."><?php endif; ?></div>
     <button class="btn">عرض</button>
   </form>
 </div>
 
-<?php if ($type === 'evaluations'): ?>
+<?php if ($isMatrix): ?>
+<div class="card"><p>حاضر: توجد بصمة دخول في ذلك التاريخ. غائب: لا توجد بصمة دخول حتى وقت عرض التقرير؛ بصمة الخروج وحدها لا تُحسب حضورًا. المناوبة الليلية تُنسب إلى تاريخ الدخول. الإجازات والعطل لا تغيّر هذه النتيجة.</p>
+<?php if (!empty($report['period_label'])): ?><p>النطاق: <?= Helpers::e($report['period_label']) ?></p><?php endif; ?></div>
+<?php endif; ?>
+<?php if (!empty($report['error'])): ?>
+<div class="card" role="alert"><?= Helpers::e($report['error']) ?></div>
+<?php elseif ($type === 'evaluations'): ?>
   <?php if (empty($report['job_id'])): ?>
   <div class="card"><p><i class="fa-solid fa-circle-info"></i> الرجاء اختيار وظيفة من القائمة أعلاه لعرض تقرير الأداء الوظيفي (KPI) الخاص بموظفيها. كل وظيفة لها مؤشرات أداء مختلفة، لذا لا يوجد تقرير أداء عام موحّد.</p></div>
   <?php elseif (!$report['employees']): ?>
@@ -126,14 +149,16 @@ $f = $filters;
     <a href="/hr/reports/export?<?= http_build_query(array_merge($f, ['type'=>$type,'format'=>'pdf'])) ?>" class="btn btn-sm btn-danger">PDF</a>
     <button onclick="window.print()" class="btn btn-sm btn-light">طباعة</button>
   </div>
-  <table>
+  <?php if ($isMatrix): ?><div class="attendance-matrix-scroll" role="region" aria-label="جدول الحضور اليومي — يمكن التمرير أفقياً" tabindex="0"><?php endif; ?>
+  <table <?= $isMatrix ? 'class="attendance-matrix"' : '' ?>>
     <tr><?php foreach ($report['headers'] as $h): ?><th><?= Helpers::e($h) ?></th><?php endforeach; ?></tr>
     <?php foreach ($rows as $r): ?>
     <tr>
       <?php foreach ($columns as $key): ?>
       <?php $val = $r[$key] ?? ''; ?>
       <td>
-        <?php if ($key === 'status' && $val): ?><span class="badge badge-<?= $val==='approved'||$val==='paid'||$val==='settled'||$val==='active'||$val==='fully_approved'?'success':($val==='rejected'?'danger':($val==='cancelled'?'secondary':'warning')) ?>"><?= $statusLabels[$val] ?? $val ?></span>
+        <?php if ($isMatrix && str_starts_with($key, 'day_')): ?><span class="<?= $val === 'حاضر' ? 'matrix-present' : ($val === 'غائب' ? 'matrix-absent' : 'matrix-future') ?>"><?= Helpers::e((string)$val) ?></span>
+        <?php elseif ($key === 'status' && $val): ?><span class="badge badge-<?= $val==='approved'||$val==='paid'||$val==='settled'||$val==='active'||$val==='fully_approved'?'success':($val==='rejected'?'danger':($val==='cancelled'?'secondary':'warning')) ?>"><?= $statusLabels[$val] ?? $val ?></span>
         <?php elseif ($key === 'adjustment_type'): ?><?= $adjustLabels[$val] ?? $val ?>
         <?php elseif ($key === 'leave_type'): ?><?= $leaveLabels[$val] ?? $val ?>
         <?php elseif ($key === 'request_type'): ?><?= $requestLabels[$val] ?? $val ?>
@@ -153,6 +178,7 @@ $f = $filters;
     </tr>
     <?php endforeach; ?>
   </table>
+  <?php if ($isMatrix): ?></div><?php endif; ?>
 </div>
 <?php else: ?>
 <div class="card"><p>لا توجد بيانات للفلاتر المحددة.</p></div>

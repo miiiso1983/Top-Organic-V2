@@ -5290,7 +5290,8 @@ class HrController extends Controller
             'job_id' => (int)($_GET['job_id'] ?? 0),
         ];
         $report = HrReportService::getReport($type, $filters);
-        $employees = Database::query("SELECT id, full_name FROM employees WHERE file_status='open' ORDER BY full_name")->fetchAll();
+        if ($type === 'attendance_matrix' && isset($report['filters'])) $filters = array_replace($filters, $report['filters']);
+        $employees = Database::query("SELECT id, full_name FROM employees WHERE (? = 'attendance_matrix' OR file_status='open') ORDER BY full_name", [$type])->fetchAll();
         $branches = Database::query("SELECT id, name FROM branches ORDER BY name")->fetchAll();
         $departments = Database::query("SELECT id, name FROM departments ORDER BY name")->fetchAll();
         $jobs = Database::query("SELECT id, title FROM jobs WHERE is_active = 1 ORDER BY title")->fetchAll();
@@ -5322,6 +5323,9 @@ class HrController extends Controller
             'job_id' => (int)($_GET['job_id'] ?? 0),
         ];
         $report = HrReportService::getReport($type, $filters);
+        if ($type === 'attendance_matrix' && isset($report['filters'])) $filters = array_replace($filters, $report['filters']);
+
+        if (!empty($report['error'])) { Response::json(['error'=>$report['error']], 422); return; }
 
         // تقرير الأداء الوظيفي: تصدير مخصص ديناميكياً بأعمدة مؤشرات الأداء (KPIs) الخاصة بالوظيفة المحددة
         if ($type === 'evaluations') {
@@ -5383,12 +5387,12 @@ class HrController extends Controller
             $sheetRows[] = $row;
         }
         $sheet = [
-            'title' => $type, 'report_title' => $report['title'], 'period' => $filters['period'],
+            'title' => $type, 'report_title' => $report['title'], 'period' => $report['period_label'] ?? $filters['period'],
             'headers' => $headers, 'rows' => $sheetRows,
             'durationColumns' => array_keys($columns, 'total_hours', true),
         ];
         if ($format === 'pdf') {
-            ExportHelper::pdf('hr_' . $type . '_' . date('Ymd') . '.pdf', ['title' => $report['title'], 'period' => $filters['period'], 'headers' => $headers, 'rows' => $sheetRows]);
+            ExportHelper::pdf('hr_' . $type . '_' . date('Ymd') . '.pdf', ['title' => $report['title'], 'period' => $report['period_label'] ?? $filters['period'], 'headers' => $headers, 'rows' => $sheetRows]);
         } else {
             ExportHelper::excel('hr_' . $type . '_' . date('Ymd') . '.xlsx', [$sheet]);
         }

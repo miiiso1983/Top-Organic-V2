@@ -83,6 +83,7 @@ class HrReportService
             case 'advances': return self::advances($filters);
             case 'long_advances': return self::longAdvances($filters);
             case 'attendance': return self::attendance($filters);
+            case 'attendance_matrix': return self::attendanceMatrix($filters);
             case 'delays': return self::delays($filters);
             case 'absences': return self::absences($filters);
             case 'overtime': return self::overtime($filters);
@@ -100,6 +101,67 @@ class HrReportService
             case 'custom': return self::custom($filters);
             default: return self::payroll($filters);
         }
+    }
+
+    /** Calendar-day presence based solely on stored clock-ins, including employees without punches. */
+    public static function attendanceMatrix(array $filters): array
+    {
+        $report = ['title'=>'تقرير الحضور اليومي حسب الموظف', 'columns'=>['full_name','department'],
+            'headers'=>['اسم الموظف','القسم'], 'rows'=>[], 'dates'=>[]];
+        $zone = new \DateTimeZone('Asia/Baghdad');
+        $today = new \DateTimeImmutable('today', $zone);
+        $parse = static function(string $value) use ($zone): ?\DateTimeImmutable {
+            $date = \DateTimeImmutable::createFromFormat('!Y-m-d', $value, $zone);
+            return $date && $date->format('Y-m-d') === $value ? $date : null;
+        };
+        $from = trim((string)($filters['date_from'] ?? ''));
+        $to = trim((string)($filters['date_to'] ?? ''));
+        if ($from !== '' || $to !== '') {
+            $from = $from ?: $to;
+            $to = $to ?: $from;
+        } else {
+            $period = trim((string)($filters['period'] ?? '')) ?: $today->format('Y-m');
+            $first = $parse($period.'-01');
+            if (!$first) return $report + ['error'=>'الفترة غير صالحة. استخدم YYYY-MM أو حدد من وإلى تاريخ.'];
+            $from = $first->format('Y-m-d');
+            $to = ($period === $today->format('Y-m') ? $today : $first->modify('last day of this month'))->format('Y-m-d');
+        }
+        $start = $parse($from); $end = $parse($to);
+        if (!$start || !$end || $start > $end) {
+            return $report + ['error'=>'حدد نطاق تاريخ صحيحًا؛ تاريخ البداية يجب ألا يكون بعد تاريخ النهاية.'];
+        }
+        // Excel supports 16,384 columns; reject explicitly rather than silently truncating dates.
+        if ((int)$start->diff($end)->days + 1 > 16382) {
+            return $report + ['error'=>'عدد التواريخ يتجاوز سعة أعمدة Excel. اختر نطاقًا أقصر.'];
+        }
+        $report['filters'] = ['period'=>'','date_from'=>$from,'date_to'=>$to];
+        $report['period_label'] = $from.' — '.$to;
+        for ($day=$start; $day <= $end; $day=$day->modify('+1 day')) {
+            $date = $day->format('Y-m-d');
+            $report['dates'][] = $date;
+            $report['columns'][] = 'day_'.$date;
+            $report['headers'][] = $date;
+        }
+        [$where,$params] = self::buildFilter($filters, 'status');
+        $employees = Database::query("SELECT e.id,e.full_name,COALESCE(d.name,e.department,'—') AS department
+            FROM employees e LEFT JOIN departments d ON d.id=e.department_id
+            WHERE $where ORDER BY e.full_name,e.id", $params)->fetchAll();
+        $punches = Database::query("SELECT a.employee_id,DATE(a.checked_at) AS attendance_day
+            FROM attendance a JOIN employees e ON e.id=a.employee_id
+            WHERE $where AND a.check_type='in' AND a.checked_at>=? AND a.checked_at<?
+            GROUP BY a.employee_id,DATE(a.checked_at)",
+            [...$params,$from.' 00:00:00',$end->modify('+1 day')->format('Y-m-d').' 00:00:00'])->fetchAll();
+        $present = [];
+        foreach ($punches as $punch) $present[(int)$punch['employee_id']][$punch['attendance_day']] = true;
+        foreach ($employees as $employee) {
+            $row = ['full_name'=>$employee['full_name'],'department'=>$employee['department']];
+            foreach ($report['dates'] as $date) {
+                $row['day_'.$date] = isset($present[(int)$employee['id']][$date]) ? 'حاضر'
+                    : ($date > $today->format('Y-m-d') ? 'لم يأتِ بعد' : 'غائب');
+            }
+            $report['rows'][] = $row;
+        }
+        return $report;
     }
 
     public static function payroll(array $filters): array
