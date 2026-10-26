@@ -42,11 +42,7 @@ final List<NavItem> kNavItems = [
     icon: Icons.notifications_outlined,
   ),
   // بلا شرط صلاحية: صندوق البريد متاح لكل مستخدم مسجّل دخول في جميع الأقسام
-  NavItem(
-    path: '/mail',
-    label: 'nav_mail',
-    icon: Icons.mail_outline,
-  ),
+  NavItem(path: '/mail', label: 'nav_mail', icon: Icons.mail_outline),
   // بلا شرط صلاحية: كل موظف مسجّل دخول يمكنه تقديم طلب صيانة ومتابعة طلباته هنا
   NavItem(
     path: '/approvals',
@@ -54,6 +50,11 @@ final List<NavItem> kNavItems = [
     icon: Icons.fact_check_outlined,
   ),
   NavItem(path: '/archive', label: 'nav_archive', icon: Icons.archive_outlined),
+  NavItem(
+    path: '/team',
+    label: 'nav_team_records',
+    icon: Icons.groups_outlined,
+  ),
   NavItem(
     path: '/sales',
     label: 'nav_sales',

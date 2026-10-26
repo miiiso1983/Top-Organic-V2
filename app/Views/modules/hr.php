@@ -18,6 +18,11 @@
 </div>
 
 <div class="res-grid">
+  <a href="/hr/team" class="res-card"><div class="icon">👥</div><div class="title">إجراءات الموظفين والأرشيف</div></a>
+  <a href="/hr/notices" class="res-card"><div class="title">التنبيهات والتوجيهات</div></a>
+  <a href="/hr/warnings" class="res-card"><div class="title">الإنذارات والموافقات</div></a>
+  <a href="/hr/transfers" class="res-card"><div class="title">نقل الموظفين</div></a>
+  <a href="/hr/photo-loadings" class="res-card"><div class="title">التحميلات المصورة</div></a>
   <a href="/hr/employees" class="res-card">
     <div class="icon"><i class="fa-solid fa-users"></i></div>
     <div class="title">الموظفون</div>

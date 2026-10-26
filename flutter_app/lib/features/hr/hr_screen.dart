@@ -246,6 +246,11 @@ class _HrScreenState extends State<HrScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
+                  ElevatedButton.icon(
+                    onPressed: () => context.push('/team'),
+                    icon: const Icon(Icons.groups_outlined),
+                    label: const Text('الموظفون وسجلي الوظيفي'),
+                  ),
                   if (emp != null)
                     Card(
                       child: ListTile(

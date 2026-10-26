@@ -520,6 +520,11 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
       appBar: AppBar(
         title: Text(t('approvals_title')),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.groups_outlined),
+            tooltip: 'موافقات وسجلات الموظفين',
+            onPressed: () => context.push('/team'),
+          ),
           if (auth.can('accounting.manage') || auth.can('payroll.manage'))
             IconButton(
               icon: const Icon(Icons.payments_outlined),

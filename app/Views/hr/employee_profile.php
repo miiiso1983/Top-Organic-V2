@@ -56,6 +56,7 @@ $warningType = ['verbal'=>'شفهي','written'=>'خطي','final'=>'نهائي'];
       <i class="fa-solid fa-xmark"></i> إغلاق
     </button>
     <?php else: ?>
+    <a href="/hr/team?employee=<?= (int)$employee['id'] ?>" class="btn btn-sm">التنبيهات والإنذارات وأرشيف الإجراءات</a>
     <a href="/hr/employees" class="btn btn-sm btn-secondary"><i class="fa-solid fa-arrow-right"></i> الموظفون</a>
     <?php endif; ?>
     <?php if (Auth::can('hr.manage')): ?>

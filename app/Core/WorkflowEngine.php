@@ -693,6 +693,9 @@ class WorkflowEngine
         if (!$user) return false;
         if ((string)($user['role_name'] ?? '') === 'مدير النظام') return true;
 
+        $frozen = HrTransferSnapshot::get((int)($request['id'] ?? 0), 'legacy_'.(int)$step['id']);
+        if ($frozen !== null) return in_array($userId, $frozen, true);
+
         $approverType = $step['approver_type'] ?? 'position';
         if ($approverType === 'direct_manager' || $approverType === 'department_manager') {
             $expectedUserId = self::resolveManagerApprover((int)($request['requester_employee_id'] ?? 0), $approverType);
@@ -866,6 +869,14 @@ class WorkflowEngine
             'created_at' => $createdAt,
             'step_title' => $step['title'] ?? '',
         ];
+        $frozen = HrTransferSnapshot::get($requestId, 'legacy_'.(int)$step['id']);
+        if ($frozen !== null) {
+            foreach ($frozen as $uid) {
+                self::addParticipant($requestId, $uid, 'approver');
+                self::dispatchNotification($channels, $uid, $title, $body, $link, $requestId, 'pending_approval', $metadata);
+            }
+            return;
+        }
         $notified = [];
 
         // طلبات الموظفين الذاتية (إجازات/سلف/عمل إضافي/نسيان بصمة): الإشعار يُقيّد حصراً على المدير المباشر
@@ -905,8 +916,18 @@ class WorkflowEngine
      * مسمى وظيفي، أو دور). مستخلصة من منطق notifyApprovers() لإعادة استخدامها أيضاً في عرض
      * مسار الموافقة (من وافق/من رفض/من بانتظار دوره).
      */
+    public static function freezeTransferApprovers(array $request): void
+    {
+        foreach (WorkflowTemplateService::getSteps((int)$request['template_id']) as $step) {
+            if ((int)$step['step_order'] < (int)$request['current_step']) continue;
+            HrTransferSnapshot::save((int)$request['id'], 'legacy_'.(int)$step['id'], self::resolveStepApproverIds($step, $request));
+        }
+    }
+
     private static function resolveStepApproverIds(array $step, array $req): array
     {
+        $frozen = HrTransferSnapshot::get((int)($req['id'] ?? 0), 'legacy_'.(int)$step['id']);
+        if ($frozen !== null) return $frozen;
         $ids = [];
         $approverType = $step['approver_type'] ?? 'position';
         if ($approverType === 'direct_manager' || $approverType === 'department_manager') {

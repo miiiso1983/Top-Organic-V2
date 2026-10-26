@@ -39,6 +39,8 @@ String resolveNotificationRoute({
 
   // ٢. تصنيف الكيان (entity_type) المُرسل مع Push (متاح دائماً تقريباً)
   switch (entityType) {
+    case 'hr_employee_case':
+      return '/team';
     case 'request':
       return decidedActions.contains(actionType) ? '/archive' : '/approvals';
     case 'kpi_evaluation':
@@ -59,6 +61,7 @@ String resolveNotificationRoute({
 
   // ٣. احتياطي: تحليل الرابط الأصلي (link) المُرسل من الخادم
   final l = link ?? '';
+  if (l.contains('/hr/team')) return '/team';
   if (l.contains('/workflows/requests/')) {
     return decidedActions.contains(actionType) ? '/archive' : '/approvals';
   }

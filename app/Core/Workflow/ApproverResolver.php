@@ -25,6 +25,8 @@ final class ApproverResolver
     /** تعيد قائمة user_id فريدة بعد تطبيق التفويض */
     public static function resolve(array $config, array $request): array
     {
+        $frozen = \App\Core\HrTransferSnapshot::get((int)($request['id'] ?? 0), \App\Core\HrTransferSnapshot::key($config));
+        if ($frozen !== null) return $frozen;
         $type = (string)($config['type'] ?? '');
         $users = match ($type) {
             'user'               => [(int)($config['user_id'] ?? 0)],

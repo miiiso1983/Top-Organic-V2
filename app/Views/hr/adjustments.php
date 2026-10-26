@@ -44,7 +44,9 @@ function toggleAdjustmentAmountMode(){
 
 <div class="card">
   <h3>تسجيل إنذار</h3>
-  <form method="post" action="/hr/adjustments/warnings">
+  <?php $_SESSION['hr_team_csrf'] ??= bin2hex(random_bytes(32)); ?>
+<form method="post" action="/hr/adjustments/warnings">
+<input type="hidden" name="hr_team_csrf" value="<?= htmlspecialchars($_SESSION['hr_team_csrf'],ENT_QUOTES) ?>"><input type="hidden" name="request_key" value="<?= bin2hex(random_bytes(20)) ?>">
     <div class="form-row"><label>الموظف</label>
       <select name="employee_id" required><?php foreach ($employees as $e): ?><option value="<?= $e['id'] ?>" <?= $e['id'] == $employeeId ? 'selected' : '' ?>><?= Helpers::e($e['full_name']) ?></option><?php endforeach; ?></select>
     </div>

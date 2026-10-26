@@ -962,4 +962,24 @@ $router->post('/api/workflows/requests/{id}/edit', [ApiController::class, 'workf
 $router->post('/api/workflows/requests/{id}/cancel', [ApiController::class, 'workflowCancelRequest'], ['api', 'perm:workflow.create,mobile.approvals']);
 $router->post('/api/workflows/requests/{id}/comment', [ApiController::class, 'workflowComment'], ['api', 'perm:workflow.create']);
 
+
+// Shared employee actions, records and approval queues (web + Android/iOS).
+foreach (['/hr/team','/hr/notices','/hr/warnings','/hr/transfers','/hr/photo-loadings'] as $path) $router->get($path,[\App\Controllers\HrTeamController::class,'page'],['auth']);
+foreach (['/hr/team-data'=>'auth','/api/hr-team'=>'api'] as $prefix=>$guard) {
+    $c=\App\Controllers\HrTeamController::class;
+    $router->get($prefix.'/employees',[$c,'employees'],[$guard]);
+    $router->get($prefix.'/employees/{id}',[$c,'employee'],[$guard]);
+    $router->get($prefix.'/employees/{id}/payroll/{pid}',[$c,'payroll'],[$guard]);
+    $router->get($prefix.'/cases',[$c,'cases'],[$guard]);
+    $router->get($prefix.'/export',[$c,'export'],[$guard]);
+    $router->get($prefix.'/cases/{id}',[$c,'detail'],[$guard]);
+    $router->post($prefix.'/cases/{id}/read',[$c,'read'],[$guard]);
+    $router->post($prefix.'/cases/{id}/decide',[$c,'decide'],[$guard]);
+    $router->get($prefix.'/employees/{id}/form/{action}',[$c,'form'],[$guard]);
+    $router->post($prefix.'/employees/{id}/action/{action}',[$c,'perform'],[$guard]);
+    $router->get($prefix.'/employees/{id}/archive',[$c,'archive'],[$guard]);
+    $router->get($prefix.'/files/{id}',[$c,'file'],[$guard]);
+    $router->get($prefix.'/files/{id}/data',[$c,'fileData'],[$guard]);
+}
+
 return $router;

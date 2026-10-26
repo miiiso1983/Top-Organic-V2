@@ -17,6 +17,7 @@ import '../features/kitchen/kitchen_screen.dart';
 import '../features/inventory/inventory_screen.dart';
 import '../features/purchasing/purchasing_screen.dart';
 import '../features/hr/hr_screen.dart';
+import '../features/hr/hr_team_screen.dart';
 import '../features/hr/attendance_screen.dart';
 import '../features/hr/exceptional_advance_screen.dart';
 import '../features/hr/manager_shift_assign_screen.dart';
@@ -209,6 +210,10 @@ GoRouter buildRouter(AuthProvider auth) {
           GoRoute(
             path: '/hr/overtime-manager',
             builder: (context, state) => const OvertimeManagerScreen(),
+          ),
+          GoRoute(
+            path: '/team',
+            builder: (context, state) => const HrTeamScreen(),
           ),
           GoRoute(
             path: '/hr/team-evaluations',

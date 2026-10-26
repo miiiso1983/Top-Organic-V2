@@ -11,8 +11,10 @@ class SalaryDetailScreen extends StatefulWidget {
     super.key,
     required this.payrollId,
     required this.period,
+    this.employeeId,
   });
   final int payrollId;
+  final int? employeeId;
   final String period;
 
   @override
@@ -39,8 +41,21 @@ class _SalaryDetailScreenState extends State<SalaryDetailScreen> {
     });
     try {
       final api = context.read<ApiClient>();
-      final res = await api.get('/payroll/${widget.payrollId}');
-      final body = res.data as Map<String, dynamic>;
+      final res = await api.get(
+        widget.employeeId == null
+            ? '/payroll/${widget.payrollId}'
+            : '/hr-team/employees/${widget.employeeId}/payroll/${widget.payrollId}',
+      );
+      var body = res.data as Map<String, dynamic>;
+      if (widget.employeeId != null) {
+        final payload = body['data'] as Map;
+        body = {
+          'data': payload['payroll'],
+          'overtime': payload['overtime'],
+          'allowances': payload['allowances'],
+        };
+      }
+      if (!mounted) return;
       setState(() {
         _payroll = (body['data'] as Map?)?.cast<String, dynamic>();
         _overtime = (body['overtime'] as List?) ?? [];
@@ -72,10 +87,13 @@ class _SalaryDetailScreenState extends State<SalaryDetailScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: bold ? const TextStyle(fontWeight: FontWeight.bold) : null,
+          Expanded(
+            child: Text(
+              label,
+              style: bold ? const TextStyle(fontWeight: FontWeight.bold) : null,
+            ),
           ),
+          const SizedBox(width: 8),
           Text(
             value.toString(),
             style: bold ? const TextStyle(fontWeight: FontWeight.bold) : null,

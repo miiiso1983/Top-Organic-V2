@@ -910,6 +910,7 @@ class AppStrings {
     },
     'hr_eval_evaluated_prefix': {'ar': 'تم التقييم (', 'en': 'Evaluated ('},
     'hr_eval_evaluated_suffix': {'ar': ')', 'en': ')'},
+    'nav_team_records': {'ar': 'الموظفون وسجلي الوظيفي', 'en': 'Team and employee records'},
     'hr_eval_view_button': {'ar': 'عرض التقييم', 'en': 'View evaluation'},
     'hr_eval_pending': {'ar': 'بانتظار التقييم', 'en': 'Pending evaluation'},
 

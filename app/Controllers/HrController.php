@@ -5232,6 +5232,7 @@ class HrController extends Controller
 
     public function storeWarning(): void
     {
+        if(empty($_SESSION['hr_team_csrf']) || !hash_equals($_SESSION['hr_team_csrf'],(string)$this->input('hr_team_csrf',''))) { Response::abort(403,'أعد فتح الصفحة ثم أرسل الطلب'); }
         $employeeId = (int)$this->input('employee_id');
         if (!HrService::isEmployeeFileOpen($employeeId)) {
             $this->flash('danger', 'ملف الموظف مغلق أو مأرشف');
@@ -5244,9 +5245,17 @@ class HrController extends Controller
             $this->flash('danger', 'بيانات إنذار غير صالحة');
             Response::redirect('/hr/adjustments');
         }
-        HrService::createWarning($employeeId, $type, $reason, $date, Auth::id());
-        $this->flash('success', 'تم تسجيل الإنذار');
-        Response::redirect('/hr/adjustments' . ($employeeId ? '?employee_id=' . $employeeId : ''));
+        try {
+            $id=(new \App\Core\HrTeamService((int)Auth::id()))->createCase($employeeId,[
+                'kind'=>'warning','subject'=>'طلب إنذار','body'=>$reason,'warning_type'=>$type,
+                'request_key'=>(string)$this->input('request_key','')
+            ]);
+            $this->flash('success','تم إرسال الإنذار لاعتماد مدير المدير قبل تبليغ الموظف');
+            Response::redirect('/hr/team?case='.$id);
+        } catch (\RuntimeException $e) {
+            $this->flash('danger',$e->getMessage());
+            Response::redirect('/hr/adjustments');
+        }
     }
 
     public function resolveWarning(string $id): void
