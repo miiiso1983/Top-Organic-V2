@@ -38,6 +38,7 @@ window.reinitSelect2 = function(selector) { window._select2ReinitQueue.push(sele
     <div class="brand"><span class="brand-logo-wrap"><img src="/assets/images/logo.webp" alt="Top Organic" class="brand-logo"></span><span class="brand-text">Top Organic</span></div>
     <nav>
       <a href="/hr/team"><span class="nav-icon"><i class="fa-solid fa-users"></i></span><span class="nav-label">الموظفون وسجلي الوظيفي</span></a>
+      <?php if (\App\Core\HousingAccess::canView()): ?><a href="/hr/housing"><span class="nav-icon"><i class="fa-solid fa-house"></i></span><span class="nav-label">المقيمون في السكن</span></a><?php endif; ?>
       <a href="/dashboard"><span class="nav-icon"><i class="fa-solid fa-house"></i></span> <span class="nav-label">الرئيسية</span></a>
 
       <?php if (Auth::can('reservations.manage') || Auth::can('reservations.types.manage') || Auth::can('call_center.manage') || Auth::can('reception.manage') || Auth::can('waiting_list.manage') || Auth::can('ai_assistant.view') || Auth::can('ai_assistant.manage')): ?>

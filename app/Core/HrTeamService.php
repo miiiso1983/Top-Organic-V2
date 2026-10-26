@@ -369,10 +369,9 @@ final class HrTeamService
         if(!$p)throw new \RuntimeException('كشف الراتب غير موجود',404);
         $overtime=Database::query('SELECT hours,multiplier,amount FROM payroll_overtime WHERE payroll_id=? ORDER BY id',[$pid])->fetchAll();
         $allowances=Database::query('SELECT allowance_type,amount FROM payroll_allowances WHERE payroll_id=? ORDER BY id',[$pid])->fetchAll();
-        $labels=['period'=>'الفترة','status'=>'الحالة','base_salary'=>'الراتب الأساسي','raises'=>'الزيادات','salary_reduction'=>'تخفيض الراتب','bonuses'=>'المكافآت','tips_addition'=>'إضافي تيبس','work_days_settlement'=>'تسوية أيام الدوام','travel_tickets'=>'تذاكر السفر','total_earnings'=>'إجمالي الاستحقاقات','deductions'=>'الخصومات','penalties'=>'الجزاءات','advances'=>'إجمالي أقساط السلف','long_term_advances'=>'منها أقساط طويلة الأجل','security_deposit'=>'تأمين المستحقات','loadings'=>'التحميلات الشهرية','tips'=>'التيبس','social_security'=>'الضمان الاجتماعي','housing_deduction'=>'خدمات السكن','rounding_adjustment'=>'فرق التقريب','absence_days'=>'أيام الغياب','absence_deduction'=>'خصم الغياب','tax_amount'=>'الضريبة','total_deductions'=>'إجمالي الاستقطاعات','net_salary'=>'صافي الراتب','expected_days'=>'أيام العمل المتوقعة','working_days'=>'أيام الدوام','leave_days'=>'أيام الإجازة','unpaid_leave_days'=>'إجازة بدون راتب'];
-        $items=[];foreach($labels as $key=>$label)if(isset($p[$key]))$items[]=['label'=>$label,'value'=>$p[$key]];
-        foreach($allowances as $a)$items[]=['label'=>$a['allowance_type'],'value'=>$a['amount']];
-        foreach($overtime as $o)$items[]=['label'=>'عمل إضافي '.$o['hours'].' ساعة × '.$o['multiplier'],'value'=>$o['amount']];
-        return ['employee'=>$e['full_name'],'payroll'=>$p,'overtime'=>$overtime,'allowances'=>$allowances,'items'=>$items];
+        $p=PayrollPresentation::detail($p);
+        $columns=PayrollPresentation::columns($p);
+        $items=array_map(static function($c){return ['label'=>$c['label'],'value'=>(isset($c['days'])?$c['days'].' يوم / ':'').$c['value']];},$columns);
+        return ['employee'=>$e['full_name'],'payroll'=>$p,'overtime'=>$overtime,'allowances'=>$allowances,'columns'=>$columns,'items'=>$items];
     }
 }

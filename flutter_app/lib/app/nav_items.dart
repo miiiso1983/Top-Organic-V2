@@ -156,7 +156,7 @@ final List<NavItem> kNavItems = [
     path: '/housing',
     label: 'nav_housing',
     icon: Icons.home_work_outlined,
-    // يظهر لموظفي قسم الحراسة (تسكين ذاتي لقسمهم) أو لأي مستخدم يملك صلاحية
+    // عرض جميع المقيمين للحراسة أو لأي مستخدم يملك صلاحية
     // hr.housing.manage (مثل المدير المالي ومدير الموارد البشرية) لإدارة سكن كل الموظفين
     customCheck: (auth) =>
         (auth.user?['department']?.toString().trim() ?? '') == 'الحراسة' ||

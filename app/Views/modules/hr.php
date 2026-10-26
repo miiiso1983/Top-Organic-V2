@@ -230,7 +230,7 @@
   </a>
   <?php endif; ?>
 
-  <?php if (Auth::can('hr.housing.manage')): ?>
+  <?php if (\App\Core\HousingAccess::canView()): ?>
   <a href="/hr/housing" class="res-card">
     <div class="icon"><i class="fa-solid fa-house-chimney-user"></i></div>
     <div class="title">إدارة السكن</div>

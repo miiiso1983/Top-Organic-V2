@@ -106,9 +106,9 @@ const I18N = {
     date_from_label: 'من تاريخ', date_to_label: 'إلى تاريخ', leave_type_label: 'نوع الإجازة',
     opt_leave_unpaid: 'بدون راتب', opt_leave_hourly: 'ساعية', opt_leave_emergency: 'طارئة', opt_leave_sick: 'مرضية', opt_leave_annual: 'سنوية',
     sent_on_behalf_ok: 'تم إرسال الطلب نيابة عن الموظف بنجاح', btn_cancel: 'إلغاء',
-    housing_title: 'إدارة سكن قسم الحراسة', housing_site_label: 'الموقع', housing_apartment_label: 'رقم الشقة',
+    housing_title: 'المقيمون في السكن', housing_site_label: 'الموقع', housing_apartment_label: 'رقم الشقة',
     housing_room_label: 'رقم الغرفة', btn_save_housing: 'حفظ بيانات السكن', btn_edit_housing: 'تعديل السكن', housing_saved_ok: 'تم تحديث بيانات السكن بنجاح',
-    housing_no_employees: 'لا يوجد موظفون في قسم الحراسة', housing_current: 'السكن الحالي', none_label: '—',
+    housing_no_employees: 'لا يوجد موظفون مطابقون', housing_current: 'السكن الحالي', none_label: '—',
     profile_title: 'حسابي', change_password_title: 'تغيير كلمة المرور', current_password_label: 'كلمة المرور الحالية',
     new_password_label: 'كلمة المرور الجديدة', confirm_password_label: 'تأكيد كلمة المرور الجديدة',
     btn_change_password: 'تغيير كلمة المرور', password_changed_ok: 'تم تغيير كلمة المرور بنجاح',
@@ -144,9 +144,9 @@ const I18N = {
     date_from_label: 'From date', date_to_label: 'To date', leave_type_label: 'Leave type',
     opt_leave_unpaid: 'Unpaid', opt_leave_hourly: 'Hourly', opt_leave_emergency: 'Emergency', opt_leave_sick: 'Sick', opt_leave_annual: 'Annual',
     sent_on_behalf_ok: 'Request submitted on behalf of the employee', btn_cancel: 'Cancel',
-    housing_title: 'Security Dept. Housing Management', housing_site_label: 'Site', housing_apartment_label: 'Apartment No.',
+    housing_title: 'Housing residents', housing_site_label: 'Site', housing_apartment_label: 'Apartment No.',
     housing_room_label: 'Room No.', btn_save_housing: 'Save Housing Info', btn_edit_housing: 'Edit Housing', housing_saved_ok: 'Housing info updated successfully',
-    housing_no_employees: 'No employees in the Security department', housing_current: 'Current housing', none_label: '—',
+    housing_no_employees: 'No matching employees', housing_current: 'Current housing', none_label: '—',
     profile_title: 'My Profile', change_password_title: 'Change Password', current_password_label: 'Current password',
     new_password_label: 'New password', confirm_password_label: 'Confirm new password',
     btn_change_password: 'Change Password', password_changed_ok: 'Password changed successfully',
@@ -562,11 +562,11 @@ async function submitOnBehalf(employeeId) {
   else msg.innerHTML = '<div class="error">' + (res.error || t('error_generic')) + '</div>';
 }
 
-/* ===================== Housing (Security dept. only) ===================== */
+/* ===================== Housing (authorized viewers) ===================== */
 let HOUSING_SITES = [];
 async function loadHousing() {
   setLoading('housing');
-  const [sitesRes, empRes] = await Promise.all([API('/api/housing/sites'), API('/api/housing/employees')]);
+  const [sitesRes, empRes] = await Promise.all([API('/api/housing/sites'), API('/api/housing/employees?residents_only=1')]);
   if (!sitesRes.ok || !empRes.ok) { render('housing', '<div class="error">' + ((sitesRes.error || empRes.error) || t('error_generic')) + '</div>'); return; }
   HOUSING_SITES = sitesRes.data || [];
   if (!empRes.data.length) { render('housing', '<div class="loading">' + t('housing_no_employees') + '</div>'); return; }
@@ -575,7 +575,7 @@ async function loadHousing() {
     html += '<div class="card">';
     html += '<h4>' + e.full_name + ' <small>(' + e.emp_code + ')</small></h4>';
     html += '<p><small>' + t('housing_current') + ': ' + (e.site_name || t('none_label')) + (e.apartment_number ? (' / ' + e.apartment_number) : '') + (e.room_number ? (' / ' + e.room_number) : '') + '</small></p>';
-    html += '<button class="btn small secondary" onclick="showHousingForm(' + e.id + ')">' + t('btn_edit_housing') + '</button>';
+    if(e.can_edit) html += '<button class="btn small secondary" onclick="showHousingForm(' + e.id + ')">' + t('btn_edit_housing') + '</button>';
     html += '<div id="housing-extra-' + e.id + '"></div>';
     html += '</div>';
   });

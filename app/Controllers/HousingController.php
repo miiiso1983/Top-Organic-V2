@@ -12,6 +12,11 @@ class HousingController extends Controller
     // ===== الصفحة الرئيسية: قائمة التسكين + نموذج تسكين جديد + إعدادات الهيكلية =====
     public function index(): void
     {
+        if (!\App\Core\HousingAccess::canView()) { http_response_code(403); echo 'ليس لديك صلاحية عرض السكن'; return; }
+        if (!Auth::can('hr.housing.manage')) {
+            $this->view('hr/housing_residents',['title'=>'المقيمون في السكن','residents'=>\App\Core\HousingAccess::employees(true)]);
+            return;
+        }
         $sites = Database::query("SELECT * FROM housing_sites ORDER BY sort_order")->fetchAll();
 
         // الشقق والغرف مجمّعة لكل موقع (لبناء شجرة الإعدادات وقوائم الاختيار)

@@ -5,7 +5,7 @@ import '../../core/network/api_client.dart';
 import '../../core/locale/locale_provider.dart';
 import '../../core/locale/app_strings.dart';
 
-/// إدارة سكن موظفي قسم الحراسة (متاحة فقط لهذا القسم - الخادم يتحقق أيضاً)
+/// All housing residents; server controls viewing and editing independently.
 class HousingScreen extends StatefulWidget {
   const HousingScreen({super.key});
 
@@ -15,6 +15,7 @@ class HousingScreen extends StatefulWidget {
 
 class _HousingScreenState extends State<HousingScreen> {
   bool _loading = true;
+  bool _residentsOnly = true;
   String? _error;
   List<dynamic> _employees = [];
   String _search = '';
@@ -32,7 +33,10 @@ class _HousingScreenState extends State<HousingScreen> {
     });
     try {
       final api = context.read<ApiClient>();
-      final res = await api.get('/housing/employees');
+      final res = await api.get(
+        '/housing/employees',
+        query: {'residents_only': _residentsOnly ? '1' : '0'},
+      );
       final body = res.data as Map<String, dynamic>;
       if (!mounted) return;
       setState(() {
@@ -111,6 +115,21 @@ class _HousingScreenState extends State<HousingScreen> {
               )
             : Column(
                 children: [
+                  SwitchListTile(
+                    title: Text(
+                      lang == 'ar'
+                          ? 'المقيمون في السكن فقط'
+                          : 'Housing residents only',
+                    ),
+                    subtitle: Text(
+                      '${filtered.length} ${lang == 'ar' ? 'موظف' : 'employees'}',
+                    ),
+                    value: _residentsOnly,
+                    onChanged: (value) {
+                      setState(() => _residentsOnly = value);
+                      _load();
+                    },
+                  ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
                     child: TextField(
@@ -150,11 +169,13 @@ class _HousingScreenState extends State<HousingScreen> {
                             child: ListTile(
                               title: Text(e['full_name']?.toString() ?? ''),
                               subtitle: Text(subtitle),
-                              trailing: IconButton(
-                                icon: const Icon(Icons.edit_outlined),
-                                tooltip: t('housing_edit'),
-                                onPressed: () => _openEditDialog(e, lang),
-                              ),
+                              trailing: e['can_edit'] == true
+                                  ? IconButton(
+                                      icon: const Icon(Icons.edit_outlined),
+                                      tooltip: t('housing_edit'),
+                                      onPressed: () => _openEditDialog(e, lang),
+                                    )
+                                  : null,
                             ),
                           );
                         },

@@ -27,6 +27,7 @@ class _SalaryDetailScreenState extends State<SalaryDetailScreen> {
   Map<String, dynamic>? _payroll;
   List<dynamic> _overtime = [];
   List<dynamic> _allowances = [];
+  List<dynamic> _columns = [];
 
   @override
   void initState() {
@@ -53,6 +54,7 @@ class _SalaryDetailScreenState extends State<SalaryDetailScreen> {
           'data': payload['payroll'],
           'overtime': payload['overtime'],
           'allowances': payload['allowances'],
+          'columns': payload['columns'],
         };
       }
       if (!mounted) return;
@@ -60,6 +62,7 @@ class _SalaryDetailScreenState extends State<SalaryDetailScreen> {
         _payroll = (body['data'] as Map?)?.cast<String, dynamic>();
         _overtime = (body['overtime'] as List?) ?? [];
         _allowances = (body['allowances'] as List?) ?? [];
+        _columns = (body['columns'] as List?) ?? [];
         _loading = false;
       });
     } catch (e) {
@@ -103,6 +106,76 @@ class _SalaryDetailScreenState extends State<SalaryDetailScreen> {
     );
   }
 
+  Widget _webColumns(String lang) {
+    String money(dynamic value) => _toNum(value)
+        .toStringAsFixed(0)
+        .replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},');
+    String day(dynamic value) =>
+        '${_toNum(value)} ${lang == 'ar' ? 'يوم' : 'days'}';
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        for (final section in ['earnings', 'deductions', 'summary']) ...[
+          Text(
+            lang == 'ar'
+                ? {
+                    'earnings': 'الاستحقاقات',
+                    'deductions': 'الاستقطاعات',
+                    'summary': 'الملخص',
+                  }[section]!
+                : section,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          ..._columns.where((c) => c['section'] == section).map((item) {
+            final c = item as Map;
+            final value = c['unit'] == 'status'
+                ? c['value'].toString()
+                : c['unit'] == 'days'
+                ? day(c['value'])
+                : '${c.containsKey('days') ? '${day(c['days'])} / ' : ''}${money(c['value'])}';
+            return Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      (lang == 'ar' ? c['label'] : c['label_en'] ?? c['label'])
+                          .toString(),
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      value,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: c['key'] == 'net'
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
+          const SizedBox(height: 16),
+        ],
+        _row(
+          AppStrings.t('hr_salary_detail_total_earnings', lang),
+          _n('total_earnings'),
+          bold: true,
+        ),
+        _row(
+          AppStrings.t('hr_salary_detail_total_deductions', lang),
+          _n('total_deductions'),
+          bold: true,
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final lang = context.watch<LocaleProvider>().locale.languageCode;
@@ -117,6 +190,8 @@ class _SalaryDetailScreenState extends State<SalaryDetailScreen> {
         onRetry: _load,
         child: _payroll == null
             ? Center(child: Text(t('hr_salary_detail_no_data')))
+            : _columns.isNotEmpty
+            ? _webColumns(lang)
             : ListView(
                 padding: const EdgeInsets.all(16),
                 children: [

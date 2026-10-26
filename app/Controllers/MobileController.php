@@ -25,7 +25,7 @@ class MobileController extends Controller
         if ($emp) {
             $isManager = count(WorkflowEngine::subordinateEmployees((int)$userId)) > 0;
         }
-        $isHousingGuard = $emp && trim((string)($emp['department_name'] ?? '')) === 'الحراسة';
+        $isHousingGuard = \App\Core\HousingAccess::canView();
 
         $this->view('mobile/index', [
             'title' => 'Top Organic Mobile',

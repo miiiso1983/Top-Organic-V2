@@ -611,7 +611,7 @@ $router->post('/hr/custody/alerts/{id}/ack', [HrController::class, 'acknowledgeC
 $router->get('/api/custody/check-alerts', [HrController::class, 'runCustodyAlerts'], ['api_or_synckey']);
 
 // إدارة السكن
-$router->get('/hr/housing', [HousingController::class, 'index'], ['auth', 'perm:hr.housing.manage']);
+$router->get('/hr/housing', [HousingController::class, 'index'], ['auth']);
 $router->post('/hr/housing/apartments', [HousingController::class, 'storeApartment'], ['auth', 'perm:hr.housing.manage']);
 $router->post('/hr/housing/apartments/{id}/delete', [HousingController::class, 'deleteApartment'], ['auth', 'perm:hr.housing.manage']);
 $router->post('/hr/housing/rooms', [HousingController::class, 'storeRoom'], ['auth', 'perm:hr.housing.manage']);

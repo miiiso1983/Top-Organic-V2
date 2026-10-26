@@ -2724,19 +2724,10 @@ class HrController extends Controller
         }
 
         // قيمة المتبقي: (عدد أيام الشهر − عدد أيام البصمة المسجلة) × (الراتب الأساسي المعدّل ÷ 30)
-        $daysInMonthForRemaining = (int) date('t', strtotime($period . '-01'));
         foreach ($payrolls as &$rp) {
-            $fingerprintDays = (int) ($rp['working_days'] ?? 0);
-            $remainingDays = max(0, $daysInMonthForRemaining - $fingerprintDays);
-            $dailyRate = HrService::adjustedMonthlyBase((int)$rp['employee_id'], $period) / 30;
-            $rp['remaining_days'] = $remainingDays;
-            $rp['remaining_value'] = round($remainingDays * $dailyRate, 2);
-
-            $otReq = $overtimeRequestTotals[(int)$rp['employee_id']] ?? ['count' => 0, 'hours' => 0.0];
-            $requiredHoursForOt = (float)($rp['required_hours'] ?? 0) ?: 8.0;
-            $rp['overtime_request_hours'] = $otReq['hours'];
-            $rp['overtime_request_count'] = $otReq['count'];
-            $rp['overtime_request_days'] = round($otReq['hours'] / $requiredHoursForOt, 2);
+            $rp = \App\Core\PayrollPresentation::enrich($rp,
+                $overtimeRequestTotals[(int)$rp['employee_id']] ?? [],
+                HrService::adjustedMonthlyBase((int)$rp['employee_id'], $period));
         }
         unset($rp);
 

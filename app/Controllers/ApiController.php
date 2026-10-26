@@ -1430,7 +1430,8 @@ class ApiController extends Controller
             "SELECT allowance_type, amount FROM payroll_allowances WHERE payroll_id = ? ORDER BY allowance_type",
             [$payrollId]
         )->fetchAll();
-        Response::json(['ok' => true, 'data' => $p, 'overtime' => $overtime, 'allowances' => $allowances]);
+        $p = \App\Core\PayrollPresentation::detail($p);
+        Response::json(['ok' => true, 'data' => $p, 'overtime' => $overtime, 'allowances' => $allowances, 'columns' => \App\Core\PayrollPresentation::columns($p)]);
     }
 
     /** مزامنة النمط الهجين: يستقبل عمليات محلية ويعيد غير المتزامن */
@@ -2191,23 +2192,19 @@ class ApiController extends Controller
     /** هل الموظف الحالي ضمن قسم الحراسة؟ (لتفعيل واجهة إدارة السكن بالموبايل) */
     private function apiIsHousingGuard(): bool
     {
-        $emp = Database::query(
-            "SELECT d.name FROM employees e JOIN departments d ON d.id = e.department_id WHERE e.user_id = ?",
-            [ApiAuth::id()]
-        )->fetch();
-        return $emp && trim((string)$emp['name']) === 'الحراسة';
+        return \App\Core\HousingAccess::isGuard();
     }
 
     private function apiCanManageHousing(): bool
     {
-        return $this->apiIsHousingGuard() || Auth::can('hr.housing.manage');
+        return \App\Core\HousingAccess::canView();
     }
 
     /** قائمة مواقع السكن (باستثناء السكن الخارجي المخفي) */
     public function housingSites(): void
     {
         if (!$this->apiCanManageHousing()) {
-            Response::json(['ok' => false, 'error' => 'هذه الميزة متاحة لقسم الحراسة فقط'], 403);
+            Response::json(['ok' => false, 'error' => 'ليس لديك صلاحية إدارة أو عرض السكن'], 403);
             return;
         }
         $rows = Database::query("SELECT id, site_key, name FROM housing_sites WHERE site_key <> 'external' ORDER BY name")->fetchAll();
@@ -2247,29 +2244,14 @@ class ApiController extends Controller
         Response::json(['ok' => true, 'data' => $rows]);
     }
 
-    /** قائمة موظفي قسم الحراسة مع بيانات سكنهم الحالية */
+    /** All housing residents, with independent per-row editing authorization. */
     public function housingEmployees(): void
     {
         if (!$this->apiCanManageHousing()) {
-            Response::json(['ok' => false, 'error' => 'هذه الميزة متاحة لقسم الحراسة فقط'], 403);
+            Response::json(['ok' => false, 'error' => 'ليس لديك صلاحية إدارة أو عرض السكن'], 403);
             return;
         }
-        // موظفو قسم الحراسة أنفسهم (بلا صلاحية hr.housing.manage) يرون قسمهم فقط للتسكين الذاتي،
-        // أما أصحاب صلاحية hr.housing.manage (كالمدير المالي ومدير الموارد البشرية) فيرون كل الموظفين
-        $restrictToGuardDept = $this->apiIsHousingGuard() && !Auth::can('hr.housing.manage');
-        $rows = Database::query(
-            "SELECT e.id, e.full_name, e.emp_code,
-                    a.id AS assignment_id, a.site_id, s.name AS site_name, a.apartment_id, ap.apartment_number,
-                    a.room_id, r.room_number, a.deduction_amount
-             FROM employees e
-             " . ($restrictToGuardDept ? "JOIN departments d ON d.id = e.department_id AND d.name = 'الحراسة'" : "") . "
-             LEFT JOIN employee_housing_assignments a ON a.employee_id = e.id AND a.status = 'active'
-             LEFT JOIN housing_sites s ON s.id = a.site_id
-             LEFT JOIN housing_apartments ap ON ap.id = a.apartment_id
-             LEFT JOIN housing_rooms r ON r.id = a.room_id
-             WHERE e.file_status = 'open'
-             ORDER BY e.full_name"
-        )->fetchAll();
+        $rows = \App\Core\HousingAccess::employees(($_GET['residents_only'] ?? '0') === '1');
         Response::json(['ok' => true, 'data' => $rows]);
     }
 
@@ -2277,21 +2259,13 @@ class ApiController extends Controller
     public function updateHousingAssignment(string $id): void
     {
         if (!$this->apiCanManageHousing()) {
-            Response::json(['ok' => false, 'error' => 'هذه الميزة متاحة لقسم الحراسة فقط'], 403);
+            Response::json(['ok' => false, 'error' => 'ليس لديك صلاحية إدارة أو عرض السكن'], 403);
             return;
         }
         $employeeId = (int)$id;
-        // موظفو قسم الحراسة أنفسهم (بلا صلاحية hr.housing.manage) يقتصرون على التسكين لموظفي قسمهم فقط،
-        // أما أصحاب صلاحية hr.housing.manage فيسكنون أي موظف فعّال بغض النظر عن قسمه
-        $restrictToGuardDept = $this->apiIsHousingGuard() && !Auth::can('hr.housing.manage');
-        $emp = $restrictToGuardDept
-            ? Database::query(
-                "SELECT e.id FROM employees e JOIN departments d ON d.id = e.department_id WHERE e.id = ? AND d.name = 'الحراسة'",
-                [$employeeId]
-            )->fetch()
-            : Database::query("SELECT id FROM employees WHERE id = ? AND file_status = 'open'", [$employeeId])->fetch();
-        if (!$emp) {
-            Response::json(['ok' => false, 'error' => $restrictToGuardDept ? 'الموظف غير موجود ضمن قسم الحراسة' : 'الموظف غير موجود'], 404);
+        $emp = Database::query("SELECT e.id,e.file_status,COALESCE(d.name,e.department) department_name FROM employees e LEFT JOIN departments d ON d.id=e.department_id WHERE e.id=?",[$employeeId])->fetch();
+        if (!$emp || !\App\Core\HousingAccess::canEdit($emp)) {
+            Response::json(['ok'=>false,'error'=>'ليس لديك صلاحية تعديل تسكين هذا الموظف'],403);
             return;
         }
 
