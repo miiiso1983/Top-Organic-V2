@@ -34,6 +34,12 @@ final class HrTeamService
     public function employees(array $q): array {
         [$where,$p]=$this->scope();
         if (trim($q['search']??'')!=='') { $where.=' AND (e.full_name LIKE ? OR e.emp_code LIKE ?)'; $p[]='%'.trim($q['search']).'%'; $p[]=end($p); }
+        if (!empty($q['employee_id'])) { $where.=' AND e.id=?'; $p[]=(int)$q['employee_id']; }
+        // A lightweight, complete picker using the same authorization boundary as the list.
+        if (($q['options']??'')==='1') {
+            $rows=Database::query("SELECT e.id,e.full_name,e.emp_code FROM employees e WHERE $where ORDER BY e.full_name,e.id",$p)->fetchAll();
+            return ['rows'=>$rows];
+        }
         $page=max(1,(int)($q['page']??1)); $size=self::pageSize($q);
         $total=(int)Database::query("SELECT COUNT(*) FROM employees e WHERE $where",$p)->fetchColumn();
         $rows=Database::query("SELECT e.id,e.full_name,e.emp_code,e.manager_id,e.user_id,e.status,e.file_status,e.department_id,d.name department,j.title job_title FROM employees e LEFT JOIN departments d ON d.id=e.department_id LEFT JOIN jobs j ON j.id=e.job_id WHERE $where ORDER BY e.full_name,e.id LIMIT ? OFFSET ?",[...$p,$size,($page-1)*$size])->fetchAll();
@@ -222,6 +228,10 @@ final class HrTeamService
         foreach(['from'=>'>=','to'=>'<='] as $key=>$op)if(!empty($q[$key])){self::date($q[$key]);$where.=" AND c.created_at $op ?";$p[]=$q[$key].($key==='to'?' 23:59:59':' 00:00:00');}
         if(trim($q['search']??'')!==''){ $where.=' AND (e.full_name LIKE ? OR e.emp_code LIKE ? OR c.subject LIKE ?)';$term='%'.trim($q['search']).'%';$p=[...$p,$term,$term,$term]; }
         $sql="FROM hr_employee_cases c JOIN employees e ON e.id=c.employee_id WHERE $where";
+        if (($q['options']??'')==='1') {
+            // Include only employees with cases this viewer may read, including former team members.
+            return ['rows'=>Database::query('SELECT DISTINCT e.id,e.full_name,e.emp_code '.$sql.' ORDER BY e.full_name,e.id',$p)->fetchAll()];
+        }
         $total=(int)Database::query('SELECT COUNT(*) '.$sql,$p)->fetchColumn();
         $page=max(1,(int)($q['page']??1));$size=self::pageSize($q);$limit=$export?'':' LIMIT ? OFFSET ?';
         $rows=Database::query("SELECT c.id,c.employee_id,c.kind,c.subject,c.body,c.status,c.employee_read_at,c.created_at,c.effective_at,e.full_name,e.emp_code ".$sql.' ORDER BY c.id DESC'.$limit,$export?$p:[...$p,$size,($page-1)*$size])->fetchAll();

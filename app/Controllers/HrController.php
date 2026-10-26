@@ -9,6 +9,7 @@ class HrController extends Controller
     public function employees(): void
     {
         $search = trim((string)($_GET['search'] ?? ''));
+        $employeeId = max(0, (int)($_GET['employee_id'] ?? 0));
         $departmentId = $_GET['department_id'] ?? '';
         $jobId = $_GET['job_id'] ?? '';
         $status = $_GET['status'] ?? '';
@@ -20,6 +21,10 @@ class HrController extends Controller
 
         $where = ['1=1'];
         $params = [];
+        if ($employeeId > 0) {
+            $where[] = 'e.id = ?';
+            $params[] = $employeeId;
+        }
         if ($search !== '') {
             $where[] = "(e.full_name LIKE ? OR e.emp_code LIKE ? OR e.phone LIKE ? OR e.position LIKE ? OR e.department LIKE ?)";
             $like = '%' . $search . '%';
@@ -121,7 +126,7 @@ class HrController extends Controller
         $accounts = Database::query("SELECT id, code, name FROM accounts ORDER BY name")->fetchAll();
 
         $filters = [
-            'search' => $search, 'department_id' => $departmentId, 'job_id' => $jobId,
+            'employee_id' => $employeeId, 'search' => $search, 'department_id' => $departmentId, 'job_id' => $jobId,
             'status' => $status, 'file_status' => $fileStatus, 'branch_id' => $branchId,
             'manager_id' => $managerId, 'sort_by' => $sortBy, 'sort_dir' => $sortDir,
         ];
@@ -7371,6 +7376,7 @@ class HrController extends Controller
     public function exportEmployees(): void
     {
         $search = trim((string)($_GET['search'] ?? ''));
+        $employeeId = max(0, (int)($_GET['employee_id'] ?? 0));
         $departmentId = $_GET['department_id'] ?? '';
         $jobId = $_GET['job_id'] ?? '';
         $status = $_GET['status'] ?? '';
@@ -7382,6 +7388,10 @@ class HrController extends Controller
 
         $where = ['1=1'];
         $params = [];
+        if ($employeeId > 0) {
+            $where[] = 'e.id = ?';
+            $params[] = $employeeId;
+        }
         if ($search !== '') {
             $where[] = "(e.full_name LIKE ? OR e.emp_code LIKE ? OR e.phone LIKE ? OR e.position LIKE ? OR e.department LIKE ?)";
             $like = '%' . $search . '%';

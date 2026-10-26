@@ -52,15 +52,12 @@ $exportQueryPdf = $exportQuery ? $exportQuery . '&format=pdf' : 'format=pdf';
 <div class="card">
   <h3><i class="fa-solid fa-magnifying-glass"></i> البحث الذكي في الموظفين</h3>
   <form method="get" action="/hr/employees" class="form-inline" id="employee-search-form">
-    <div class="form-row"><label>كلمة البحث</label>
-      <select name="search" id="search-keyword" class="select2-search" data-placeholder="اختر موظف أو اكتب كلمة بحث..." data-tags="true" style="width:100%">
+    <div class="form-row"><label for="search-keyword">اسم الموظف أو الكود</label>
+      <select name="employee_id" id="search-keyword" class="select2-search" data-placeholder="ابحث واختر موظفاً — جميع الموظفين" style="width:100%">
         <option value=""></option>
         <?php foreach ($employeeOptions as $e): ?>
-        <option value="<?= Helpers::e($e['full_name']) ?>" <?= ($filters['search'] ?? '') === $e['full_name'] ? 'selected' : '' ?>><?= Helpers::e($e['full_name']) ?> (<?= Helpers::e($e['emp_code']) ?>)</option>
+        <option value="<?= (int)$e['id'] ?>" <?= (int)($filters['employee_id'] ?? 0) === (int)$e['id'] ? 'selected' : '' ?>><?= Helpers::e($e['full_name']) ?> (<?= Helpers::e($e['emp_code']) ?>)</option>
         <?php endforeach; ?>
-        <?php if (!empty($filters['search']) && !in_array($filters['search'], array_column($employeeOptions, 'full_name'), true)): ?>
-        <option value="<?= Helpers::e($filters['search']) ?>" selected><?= Helpers::e($filters['search']) ?></option>
-        <?php endif; ?>
       </select>
     </div>
     <div class="form-row"><label>القسم</label>

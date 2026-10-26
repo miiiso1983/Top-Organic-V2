@@ -14,7 +14,12 @@ class TeamFake extends ApiClient {
   Future<Response> get(String path, {Map<String, dynamic>? query}) async {
     calls.add({'path': path, ...?query});
     dynamic data;
-    if (path.endsWith('/employees')) {
+    if (query?['options'] == '1') {
+      data = {'rows': [
+        {'id': 1, 'full_name': 'أحمد علي', 'emp_code': 'EMP001'},
+        {'id': 125, 'full_name': 'أحمد علي', 'emp_code': 'EMP125'},
+      ]};
+    } else if (path.endsWith('/employees')) {
       data = {
         'rows': [
           {
@@ -124,6 +129,25 @@ void main() {
         },
       );
     }
+    testWidgets('Search selects exact employee and clears on $platform', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(390, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final api = TeamFake();
+      await tester.pumpWidget(host(const HrTeamScreen(), api, platform));
+      await tester.pumpAndSettle();
+      final input = find.descendant(of: find.byType(DropdownMenu<int>), matching: find.byType(TextField));
+      await tester.tap(input);
+      await tester.enterText(input, 'EMP125');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('أحمد علي (EMP125)').last);
+      await tester.pumpAndSettle();
+      expect(api.calls.last['employee_id'], 125);
+      expect(api.calls.last['page'], 1);
+      await tester.tap(find.byTooltip('إلغاء اختيار الموظف وعرض الجميع'));
+      await tester.pumpAndSettle();
+      expect(api.calls.last.containsKey('employee_id'), isFalse);
+      expect(tester.takeException(), isNull);
+    });
     testWidgets('Self service never renders manager actions on $platform', (
       tester,
     ) async {

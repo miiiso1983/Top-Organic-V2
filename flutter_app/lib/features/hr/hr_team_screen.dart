@@ -66,20 +66,20 @@ const teamLabels = <String, String>{
 String teamStatus(Object? v) =>
     {
       'created': 'إنشاء الطلب',
-  'resolved': 'معالج',
-  'expired': 'منتهي',
-  'deduction': 'خصم',
-  'penalty': 'جزاء',
-  'bonus': 'مكافأة',
-  'raise': 'زيادة',
-  'short': 'قصيرة الأجل',
-  'long': 'طويلة الأجل',
-  'monthly': 'شهري',
-  'annual': 'سنوية',
-  'unpaid': 'بدون راتب',
-  'sick': 'مرضية',
-  'emergency': 'طارئة',
-  'issued': 'صادر',
+      'resolved': 'معالج',
+      'expired': 'منتهي',
+      'deduction': 'خصم',
+      'penalty': 'جزاء',
+      'bonus': 'مكافأة',
+      'raise': 'زيادة',
+      'short': 'قصيرة الأجل',
+      'long': 'طويلة الأجل',
+      'monthly': 'شهري',
+      'annual': 'سنوية',
+      'unpaid': 'بدون راتب',
+      'sick': 'مرضية',
+      'emergency': 'طارئة',
+      'issued': 'صادر',
       'pending_manager': 'بانتظار المدير',
       'pending_hr': 'بانتظار الموارد البشرية',
       'approved': 'معتمد',
@@ -118,13 +118,18 @@ class HrTeamScreen extends StatefulWidget {
 class _HrTeamScreenState extends State<HrTeamScreen> {
   String _tab = 'employees', _status = '', _from = '', _to = '';
   final _search = TextEditingController();
-  int _page = 1, _size = 25, _sequence = 0;
+  int _page = 1, _size = 25, _sequence = 0, _optionSequence = 0;
+  int? _employeeId;
+  List<Map<String, dynamic>> _employeeOptions = [];
+  bool _optionsBusy = true;
+  String? _optionsError;
   bool _busy = true;
   String? _error;
   Map<String, dynamic> _data = {};
   @override
   void initState() {
     super.initState();
+    _loadOptions();
     _load();
   }
 
@@ -132,6 +137,37 @@ class _HrTeamScreenState extends State<HrTeamScreen> {
   void dispose() {
     _search.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadOptions() async {
+    final seq = ++_optionSequence;
+    setState(() {
+      _optionsBusy = true;
+      _optionsError = null;
+    });
+    try {
+      final data = await teamGet(
+        context,
+        _tab == 'employees' ? '/employees' : '/cases',
+        query: {
+          'options': '1',
+          if (_tab != 'employees' && _tab != 'all') 'kind': _tab,
+        },
+      );
+      if (mounted && seq == _optionSequence) {
+        setState(
+          () => _employeeOptions = (data['rows'] as List)
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .toList(),
+        );
+      }
+    } catch (e) {
+      if (mounted && seq == _optionSequence)
+        setState(() => _optionsError = teamError(e));
+    } finally {
+      if (mounted && seq == _optionSequence)
+        setState(() => _optionsBusy = false);
+    }
   }
 
   Future<void> _load() async {
@@ -147,7 +183,7 @@ class _HrTeamScreenState extends State<HrTeamScreen> {
         query: {
           'page': _page,
           'page_size': _size,
-          'search': _search.text,
+          if (_employeeId != null) 'employee_id': _employeeId,
           if (_tab != 'employees' && _tab != 'all') 'kind': _tab,
           if (_status.isNotEmpty) 'status': _status,
           if (_from.isNotEmpty) 'from': _from,
@@ -214,27 +250,73 @@ class _HrTeamScreenState extends State<HrTeamScreen> {
                       setState(() {
                         _tab = v!;
                         _page = 1;
+                        _employeeId = null;
+                        _search.clear();
+                        _employeeOptions = [];
                       });
+                      _loadOptions();
                       _load();
                     },
                   ),
-                  if (_tab == 'employees')
-                    TextField(
-                      controller: _search,
-                      decoration: InputDecoration(
-                        labelText: 'اسم الموظف أو الكود',
-                        suffixIcon: IconButton(
-                          icon: const Icon(Icons.search),
-                          onPressed: () {
-                            _page = 1;
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownMenu<int>(
+                          key: ValueKey('employee-picker-$_tab'),
+                          controller: _search,
+                          enabled: !_optionsBusy && _optionsError == null,
+                          enableFilter: true,
+                          enableSearch: true,
+                          requestFocusOnTap: true,
+                          expandedInsets: EdgeInsets.zero,
+                          menuHeight: 280,
+                          label: const Text('اسم الموظف أو الكود'),
+                          hintText: _optionsBusy
+                              ? 'جارٍ تحميل الأسماء…'
+                              : 'ابحث واختر موظفاً',
+                          dropdownMenuEntries: _employeeOptions.map((e) {
+                            final label =
+                                '${e['full_name']} (${e['emp_code']})';
+                            return DropdownMenuEntry<int>(
+                              value: int.parse(e['id'].toString()),
+                              label: label,
+                              labelWidget: Text(
+                                label,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            );
+                          }).toList(),
+                          onSelected: (id) {
+                            setState(() {
+                              _employeeId = id;
+                              _page = 1;
+                            });
                             _load();
                           },
                         ),
                       ),
-                      onSubmitted: (_) {
-                        _page = 1;
-                        _load();
-                      },
+                      IconButton(
+                        tooltip: 'إلغاء اختيار الموظف وعرض الجميع',
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _search.clear();
+                          setState(() {
+                            _employeeId = null;
+                            _page = 1;
+                          });
+                          FocusScope.of(context).unfocus();
+                          _load();
+                        },
+                      ),
+                    ],
+                  ),
+                  if (_optionsError != null)
+                    TextButton.icon(
+                      onPressed: _loadOptions,
+                      icon: const Icon(Icons.refresh),
+                      label: Text(_optionsError!),
                     ),
                   if (_tab != 'employees')
                     Wrap(
