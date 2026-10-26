@@ -1,7 +1,25 @@
 <style>
 #ht-app [hidden]{display:none!important}
+#ht-app{color:var(--text,#1f2937);--ht-error:#b42318}
+.dark #ht-app{--ht-error:#fda29b}
 .ht-picker .select2-selection__clear{display:none!important}
-.ht-toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0}.ht-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px}.ht-card{background:var(--card-bg,#fff);padding:18px;border:1px solid #dbe4da;border-radius:14px;overflow-wrap:anywhere}.ht-card h3{margin:0 0 8px}.ht-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.ht-dialog{margin:auto;font-size:15px;border:1px solid #ccc;border-radius:16px;padding:22px;width:min(620px,94vw);max-height:90vh;overflow:auto}.ht-dialog::backdrop{background:#0008}.ht-field{display:block;margin:12px 0}.ht-field input,.ht-field select,.ht-field textarea{width:100%;padding:10px;border:1px solid #bcc8bc;border-radius:8px}.ht-muted{color:#58665a}.ht-error{color:#b42318;white-space:pre-wrap}.ht-body{white-space:pre-wrap}.ht-photos img{max-width:100%;max-height:300px;margin:8px}.ht-record{border-bottom:1px solid #ddd;padding:14px 0}#ht-dialog h2{font-size:20px}.ht-pager{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:18px 0}
+.ht-toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0}
+.ht-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px}
+.ht-card{background:var(--surface,#fff);color:var(--text,#1f2937);padding:18px;border:1px solid var(--border,#d1d5db);border-radius:14px;overflow-wrap:anywhere}
+.ht-card h3{margin:0 0 8px;color:var(--text,#1f2937);font-weight:700}
+.ht-card p{color:var(--text,#1f2937);line-height:1.7}
+.ht-card small,.ht-muted{color:var(--text-muted,#6b7280)}
+.ht-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.ht-dialog{margin:auto;font-size:15px;background:var(--surface,#fff);color:var(--text,#1f2937);border:1px solid var(--border,#d1d5db);border-radius:16px;padding:22px;width:min(620px,94vw);max-height:90vh;overflow:auto}
+.ht-dialog::backdrop{background:#0008}
+.ht-field{display:block;margin:12px 0}
+.ht-field input,.ht-field select,.ht-field textarea{width:100%;padding:10px;background:var(--surface,#fff);color:var(--text,#1f2937);border:1px solid var(--border,#d1d5db);border-radius:8px}
+.ht-error{color:var(--ht-error,#b42318);white-space:pre-wrap}
+.ht-body{white-space:pre-wrap}
+.ht-photos img{max-width:100%;max-height:300px;margin:8px}
+.ht-record{border-bottom:1px solid var(--border,#d1d5db);padding:14px 0}
+#ht-dialog h2{font-size:20px}
+.ht-pager{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:18px 0}
 </style>
 <div id="ht-app">
 <h2>الموظفون وإجراءات الفريق</h2><p class="ht-muted">تظهر الإجراءات والسجلات المسموح بها لحسابك فقط. التحميلات المصورة لا تنشئ خصماً مالياً.</p>
