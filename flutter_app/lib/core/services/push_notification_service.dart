@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -9,6 +10,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../../firebase_options.dart';
 import '../network/api_client.dart';
 import '../utils/notification_router.dart';
+import '../storage/auth_storage.dart';
 
 /// خدمة الإشعارات الفورية (FCM + Local Notifications).
 /// تُرسل توكن الجهاز إلى الخادم ليتمكن من إرسال Push Notifications،
@@ -25,6 +27,28 @@ class PushNotificationService {
   ApiClient? _apiClient;
   GoRouter? _router;
   bool _initialized = false;
+  bool _loggingOut = false;
+  bool _sessionReady = false;
+  Map<String, dynamic>? _pendingNavigation;
+  Future<void> _registration = Future<void>.value();
+  final AuthStorage _storage = AuthStorage();
+
+  void setSessionReady(bool ready) {
+    _sessionReady = ready;
+    if (ready && _pendingNavigation != null) {
+      final data = _pendingNavigation!;
+      _pendingNavigation = null;
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _navigateFromData(data),
+      );
+    }
+  }
+
+  Future<bool> _isIntendedRecipient(Map<String, dynamic> data) async {
+    if (_loggingOut || await _storage.getToken() == null) return false;
+    final user = await _storage.getUser();
+    return notificationBelongsToUser(data, user?['id']);
+  }
 
   /// يُستدعى عند استقبال إشعار (أثناء فتح التطبيق) لتحديث عدّاد غير المقروء فوراً
   void Function()? onNotificationReceived;
@@ -79,6 +103,19 @@ class PushNotificationService {
       onDidReceiveNotificationResponse: _onLocalNotificationTap,
     );
 
+    // Local notifications provide one foreground alert on iOS (avoid duplicate sounds).
+    await _messaging?.setForegroundNotificationPresentationOptions(
+      alert: false,
+      badge: false,
+      sound: false,
+    );
+    final localLaunch = await _localNotifications
+        .getNotificationAppLaunchDetails();
+    if (localLaunch?.didNotificationLaunchApp == true &&
+        localLaunch?.notificationResponse != null) {
+      _onLocalNotificationTap(localLaunch!.notificationResponse!);
+    }
+
     // الإشعارات أثناء فتح التطبيق
     FirebaseMessaging.onMessage.listen(_showLocalNotification);
 
@@ -119,8 +156,12 @@ class PushNotificationService {
     }
   }
 
-  void _navigateFromData(Map<String, dynamic> data) {
-    if (_router == null) return;
+  Future<void> _navigateFromData(Map<String, dynamic> data) async {
+    if (!_sessionReady) {
+      _pendingNavigation = data;
+      return;
+    }
+    if (_router == null || !await _isIntendedRecipient(data)) return;
     final route = resolveNotificationRoute(
       entityType: data['entity_type']?.toString(),
       actionType: data['action_type']?.toString(),
@@ -130,8 +171,13 @@ class PushNotificationService {
   }
 
   Future<void> sendCurrentToken() async {
+    _loggingOut = false;
     if (!_initialized) return;
-    await _handleToken();
+    try {
+      await _handleToken();
+    } catch (e) {
+      debugPrint('Push registration unavailable: $e');
+    }
   }
 
   Future<void> _handleToken() async {
@@ -139,8 +185,18 @@ class PushNotificationService {
     if (token != null) await _sendToken(token);
   }
 
-  Future<void> _sendToken(String token) async {
-    if (_apiClient == null) return;
+  Future<void> _sendToken(String token) {
+    _registration = _registration.then((_) => _registerToken(token)).catchError(
+      (Object e) {
+        debugPrint('Push registration unavailable: $e');
+      },
+    );
+    return _registration;
+  }
+
+  Future<void> _registerToken(String token) async {
+    if (_apiClient == null || _loggingOut || await _storage.getToken() == null)
+      return;
     try {
       await _apiClient!.post(
         '/push/subscribe',
@@ -156,7 +212,35 @@ class PushNotificationService {
     }
   }
 
+  /// Called before clearing credentials, so unsubscribe is authenticated as the old account.
+  Future<void> unregisterCurrentDevice() async {
+    _loggingOut = true;
+    _sessionReady = false;
+    _pendingNavigation = null;
+    await _registration;
+    try {
+      final token = await _messaging?.getToken();
+      if (token != null &&
+          _apiClient != null &&
+          await _storage.getToken() != null) {
+        await _apiClient!.post('/push/unsubscribe', data: {'endpoint': token});
+      }
+    } catch (e) {
+      debugPrint('Push unsubscribe unavailable: $e');
+    } finally {
+      // Token rotation also prevents the previous account receiving notifications
+      // if the logout request failed because the device was offline.
+      try {
+        await _messaging?.deleteToken();
+      } catch (_) {}
+      try {
+        await _localNotifications.cancelAll();
+      } catch (_) {}
+    }
+  }
+
   Future<void> _showLocalNotification(RemoteMessage message) async {
+    if (!await _isIntendedRecipient(message.data)) return;
     onNotificationReceived?.call();
     final notification = message.notification;
     if (notification == null) return;
@@ -175,7 +259,12 @@ class PushNotificationService {
           playSound: true,
           icon: android?.smallIcon,
         ),
-        iOS: const DarwinNotificationDetails(presentSound: true),
+        iOS: const DarwinNotificationDetails(
+          presentAlert: true,
+          presentBanner: true,
+          presentList: true,
+          presentSound: true,
+        ),
       ),
       payload: message.data.isNotEmpty ? jsonEncode(message.data) : null,
     );

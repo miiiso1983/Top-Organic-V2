@@ -1,3 +1,13 @@
+/// Accept legacy payloads only for a signed-in account; new payloads name their owner.
+bool notificationBelongsToUser(
+  Map<String, dynamic> data,
+  Object? currentUserId,
+) {
+  if (currentUserId == null) return false;
+  final recipient = data['recipient_user_id']?.toString();
+  return recipient == null || recipient == currentUserId.toString();
+}
+
 /// يحدّد مسار التطبيق (Flutter route) المناسب لفتحه عند الضغط على إشعار،
 /// اعتماداً على نوع الكيان (entity_type)، نوع الإجراء (action_type)،
 /// كود القالب (template_code — متاح فقط من قائمة الإشعارات داخل التطبيق)،
@@ -39,6 +49,8 @@ String resolveNotificationRoute({
 
   // ٢. تصنيف الكيان (entity_type) المُرسل مع Push (متاح دائماً تقريباً)
   switch (entityType) {
+    case 'internal_mail':
+      return '/mail';
     case 'hr_employee_case':
       return '/team';
     case 'request':
@@ -61,6 +73,9 @@ String resolveNotificationRoute({
 
   // ٣. احتياطي: تحليل الرابط الأصلي (link) المُرسل من الخادم
   final l = link ?? '';
+  if (Uri.tryParse(l)?.path == '/mail' ||
+      RegExp(r'/mail/\d+$').hasMatch(Uri.tryParse(l)?.path ?? ''))
+    return '/mail';
   if (l.contains('/hr/team')) return '/team';
   if (l.contains('/workflows/requests/')) {
     return decidedActions.contains(actionType) ? '/archive' : '/approvals';

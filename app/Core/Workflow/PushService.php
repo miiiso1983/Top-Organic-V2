@@ -16,33 +16,52 @@ final class PushService
         $endpoint = substr((string)($data['endpoint'] ?? ''), 0, 2000);
         if ($endpoint === '') throw new \RuntimeException('endpoint مطلوب');
         $keys = (array)($data['keys'] ?? []);
-        $existing = Database::query(
-            "SELECT id FROM push_subscriptions WHERE user_id = ? AND endpoint = ? LIMIT 1",
-            [$userId, $endpoint]
-        )->fetch();
-        if ($existing) {
-            Database::query(
-                "UPDATE push_subscriptions SET p256dh = ?, auth = ?, is_active = 1, user_agent = ? WHERE id = ?",
-                [
-                    substr((string)($keys['p256dh'] ?? ''), 0, 255) ?: null,
-                    substr((string)($keys['auth'] ?? ''), 0, 255) ?: null,
-                    substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255) ?: null,
-                    (int)$existing['id'],
-                ]
-            );
-            return;
+        $platform = in_array($data['platform'] ?? '', ['web','android','ios'], true) ? $data['platform'] : 'web';
+        $db = Database::connect();
+        // Serialize even the first registration (there is no endpoint unique index).
+        $lock = $db->getAttribute(\PDO::ATTR_DRIVER_NAME) === 'mysql' ? hash('sha256', $endpoint) : null;
+        if ($lock && !(int)Database::query('SELECT GET_LOCK(?, 10)', [$lock])->fetchColumn()) {
+            throw new \RuntimeException('تعذر تحديث اشتراك الإشعارات، أعد المحاولة');
         }
-        Database::query(
-            "INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, platform, user_agent)
-             VALUES (?,?,?,?,?,?)",
-            [
-                $userId, $endpoint,
+        $ownTransaction = !$db->inTransaction();
+        try {
+            if ($ownTransaction) $db->beginTransaction();
+            $existing = Database::query('SELECT id FROM push_subscriptions WHERE user_id=? AND endpoint=? ORDER BY id DESC LIMIT 1', [$userId, $endpoint])->fetchColumn();
+            // One device endpoint belongs to its currently signed-in account only.
+            // Also collapse duplicate records created by concurrent old clients.
+            Database::query('UPDATE push_subscriptions SET is_active=0 WHERE endpoint=?', [$endpoint]);
+            $values = [
                 substr((string)($keys['p256dh'] ?? ''), 0, 255) ?: null,
                 substr((string)($keys['auth'] ?? ''), 0, 255) ?: null,
-                in_array($data['platform'] ?? '', ['web','android','ios'], true) ? $data['platform'] : 'web',
+                $platform,
                 substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255) ?: null,
-            ]
-        );
+            ];
+            if ($existing) {
+                Database::query('UPDATE push_subscriptions SET p256dh=?, auth=?, platform=?, user_agent=?, is_active=1 WHERE id=?', [...$values, (int)$existing]);
+            } else {
+                Database::query('INSERT INTO push_subscriptions (p256dh,auth,platform,user_agent,user_id,endpoint) VALUES (?,?,?,?,?,?)', [...$values, $userId, $endpoint]);
+            }
+            if ($ownTransaction) $db->commit();
+        } catch (\Throwable $e) {
+            if ($ownTransaction && $db->inTransaction()) $db->rollBack();
+            throw $e;
+        } finally {
+            if ($lock) Database::query('SELECT RELEASE_LOCK(?)', [$lock]);
+        }
+    }
+
+    /** Never guess ownership of old endpoints shared by multiple accounts.
+     * A fresh authenticated registration safely claims them for the current user.
+     */
+    public static function subscriptions(int $userId, array $platforms = ['web', 'android', 'ios']): array
+    {
+        if (!$platforms) return [];
+        $marks = implode(',', array_fill(0, count($platforms), '?'));
+        return Database::query("SELECT s.* FROM push_subscriptions s
+            WHERE s.user_id=? AND s.is_active=1 AND s.platform IN ($marks)
+            AND NOT EXISTS (SELECT 1 FROM push_subscriptions other
+                WHERE other.endpoint=s.endpoint AND other.is_active=1 AND other.user_id<>s.user_id)",
+            [$userId, ...$platforms])->fetchAll();
     }
 
     public static function unsubscribe(int $userId, string $endpoint): void
@@ -57,10 +76,7 @@ final class PushService
     public static function hasSubscription(int $userId): bool
     {
         try {
-            return (bool)Database::query(
-                "SELECT 1 FROM push_subscriptions WHERE user_id = ? AND is_active = 1 LIMIT 1",
-                [$userId]
-            )->fetch();
+            return (bool)self::subscriptions($userId);
         } catch (\Throwable $e) {
             return false;
         }

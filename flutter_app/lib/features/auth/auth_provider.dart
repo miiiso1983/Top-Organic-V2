@@ -13,6 +13,7 @@ class AuthProvider extends ChangeNotifier {
   final ApiClient _api;
   final AuthStorage _storage;
   Timer? _permissionsTimer;
+  bool _loggingOut = false;
 
   AuthState state = AuthState.unknown;
   Map<String, dynamic>? user;
@@ -120,7 +121,7 @@ class AuthProvider extends ChangeNotifier {
         permissions = perms;
         state = AuthState.authenticated;
         _startPermissionsAutoRefresh();
-        PushNotificationService().sendCurrentToken();
+        await PushNotificationService().sendCurrentToken();
         onLogin?.call();
         return true;
       }
@@ -138,8 +139,15 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    if (_loggingOut) return;
+    _loggingOut = true;
     _permissionsTimer?.cancel();
-    await _storage.clear();
+    try {
+      await PushNotificationService().unregisterCurrentDevice();
+      await _storage.clear();
+    } finally {
+      _loggingOut = false;
+    }
     user = null;
     permissions = [];
     state = AuthState.unauthenticated;

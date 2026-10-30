@@ -24,11 +24,8 @@ final class PushSender
             if (!$userId) { self::mark((int)$row['id'], 'failed', 'بلا مستخدم'); $stats['skipped']++; continue; }
 
             // توكنات الموبايل (FCM): endpoint = FCM registration token
-            $tokens = Database::query(
-                "SELECT endpoint FROM push_subscriptions
-                 WHERE user_id = ? AND is_active = 1 AND platform IN ('android','ios')",
-                [$userId]
-            )->fetchAll(\PDO::FETCH_COLUMN);
+            $tokens = array_values(array_unique(array_column(
+                \App\Core\Workflow\PushService::subscriptions($userId, ['android', 'ios']), 'endpoint')));
 
             $sentAny = false;
             $lastError = null;
@@ -37,6 +34,7 @@ final class PushSender
                 // بيانات إضافية (data payload) تمكّن تطبيق الموبايل من فتح الواجهة المناسبة
                 // تلقائياً عند الضغط على الإشعار (Deep Linking)
                 $data = array_filter([
+                    'recipient_user_id' => (string)$userId,
                     'entity_type' => $row['entity_type'] ?? null,
                     'entity_id' => isset($row['entity_id']) && $row['entity_id'] !== null ? (string)$row['entity_id'] : null,
                     'action_type' => $row['action_type'] ?? null,
@@ -48,7 +46,7 @@ final class PushSender
 
             // Web Push (المرحلة ج): يُعاد بناؤه عند توفر الخدمة
             if (class_exists(WebPushService::class) && WebPushService::isConfigured()) {
-                $webSent = WebPushService::sendToUser($userId, (string)$row['subject'], (string)$row['body']);
+                $webSent = WebPushService::sendToUser($userId, (string)$row['subject'], (string)$row['body'], $row['link'] ?? null);
                 $sentAny = $sentAny || $webSent > 0;
             }
 
@@ -80,10 +78,7 @@ final class PushSender
 
     private static function hasWebSubs(int $userId): bool
     {
-        return (bool)Database::query(
-            "SELECT 1 FROM push_subscriptions WHERE user_id = ? AND is_active = 1 AND platform = 'web' LIMIT 1",
-            [$userId]
-        )->fetch();
+        return (bool)\App\Core\Workflow\PushService::subscriptions($userId, ['web']);
     }
 
     private static function mark(int $id, string $status, ?string $error = null): void

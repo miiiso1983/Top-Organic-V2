@@ -95,6 +95,11 @@ class _TopOrganicAppState extends State<TopOrganicApp> {
     _apiClient.onUnauthorized = () => _authProvider.logout();
     _authProvider.onLogin = () => _notificationsProvider.refresh(_apiClient);
     _router = buildRouter(_authProvider);
+    _authProvider.addListener(() {
+      PushNotificationService().setSessionReady(
+        _authProvider.state == AuthState.authenticated,
+      );
+    });
 
     PushNotificationService().onNotificationReceived = () =>
         _notificationsProvider.bump();

@@ -205,18 +205,8 @@ class HrService
             $title = 'محاولة بصمة مرفوضة لموظف موقوف';
             $body = 'حاول الموظف ' . ($employee['full_name'] ?? '') . ' تسجيل ' . ($type === 'out' ? 'انصراف' : 'حضور') . ' أثناء فترة إيقافه، وتم رفض المحاولة تلقائياً';
             $link = '/hr/employees/' . $employeeId;
-            $hrRoleId = (int)(Database::query("SELECT id FROM roles WHERE name = 'مدير موارد بشرية' LIMIT 1")->fetchColumn() ?? 0);
-            if ($hrRoleId) {
-                Helpers::notifyRole($hrRoleId, $title, $body, $link);
-            }
-            $users = Database::query(
-                "SELECT DISTINCT u.id FROM users u
-                 JOIN role_permissions rp ON rp.role_id = u.role_id
-                 JOIN permissions p ON p.id = rp.permission_id
-                 WHERE p.code = 'hr.view' AND u.is_active = 1"
-            )->fetchAll();
-            foreach ($users as $u) {
-                Helpers::notify((int)$u['id'], $title, $body, $link);
+            foreach (HrNotificationRecipients::hr() as $uid) {
+                Helpers::notify($uid, $title, $body, $link);
             }
         } catch (\Throwable $e) {
             // silent
@@ -753,40 +743,14 @@ class HrService
             return 0;
         }
 
-        $notified = 0;
-        foreach ($rules as $rule) {
-            // مستلم محدد (user_id)
-            if (!empty($rule['user_id'])) {
-                Helpers::notify((int) $rule['user_id'], $title, $body, $link);
-                $notified++;
-                continue;
-            }
-
-            // مستلم حسب الدور
-            if (!empty($rule['role_id'])) {
-                Helpers::notifyRole((int) $rule['role_id'], $title, $body, $link);
-                $notified++;
-                continue;
-            }
-
-            $minLevel = max((int) $rule['min_admin_level'], $minAdminLevel);
-            $sql = "SELECT id, user_id FROM employees WHERE file_status = 'open' AND admin_level >= ? AND admin_level > ? AND user_id IS NOT NULL";
-            $params = [$minLevel, (int) $employee['admin_level']];
-            if ($rule['branch_specific'] && $employee['branch_id']) {
-                $sql .= " AND (branch_id = ? OR branch_id IS NULL)";
-                $params[] = (int) $employee['branch_id'];
-            }
-            if ($rule['department_specific'] && $employee['department']) {
-                $sql .= " AND (department = ? OR department = '' OR department IS NULL)";
-                $params[] = (string) $employee['department'];
-            }
-            $managers = Database::query($sql, $params)->fetchAll();
-            foreach ($managers as $m) {
-                Helpers::notify((int) $m['user_id'], $title, $body, $link);
-                $notified++;
-            }
-        }
-        return $notified;
+        // Active rules enable the event; their broad role/level audiences must not
+        // expose one employee's event to managers of unrelated teams. Duplicate
+        // rules must still produce only one notification.
+        $managerId = HrNotificationRecipients::manager($employeeId);
+        if (!$managerId) return 0;
+        Helpers::notify($managerId, $title, $body, $link, null, null, [], null,
+            'employee', $employeeId, $eventType, [], true);
+        return 1;
     }
 
     /**
@@ -2723,11 +2687,10 @@ class HrService
             if ($alreadyToday) {
                 continue;
             }
-            $subordinates = WorkflowEngine::subordinateEmployees($userId);
-            if (!$subordinates) {
+            $subIds = HrNotificationRecipients::teamEmployeeIds($userId);
+            if (!$subIds) {
                 continue;
             }
-            $subIds = array_map('intval', array_column($subordinates, 'id'));
             $subPlaceholders = implode(',', array_fill(0, count($subIds), '?'));
             $doneIds = array_column(Database::query(
                 "SELECT DISTINCT employee_id FROM evaluations
@@ -3030,7 +2993,7 @@ class HrService
     /**
      * إرسال إشعارات Push + Email لانتهاء عهدة استهلاكية
      * - الموظف صاحب العهدة
-     * - المستخدمين الإداريين (hr.custody.manage أو مستوى إداري 50+)
+     * - المدير المسؤول عن الموظف فقط
      */
     private static function notifyCustodyExpiry(int $custodyId, int $employeeId, string $itemName, string $expiryDate, string $employeeName): void
     {
@@ -3056,17 +3019,8 @@ class HrService
             }
         }
 
-        $managers = Database::query(
-            "SELECT DISTINCT u.id, u.email
-             FROM users u
-             JOIN roles r ON r.id = u.role_id
-             WHERE u.is_active = 1
-               AND (r.level >= 50 OR u.role_id IN (
-                   SELECT rp.role_id FROM role_permissions rp
-                   JOIN permissions p ON p.id = rp.permission_id
-                   WHERE p.code = 'hr.custody.manage'
-               ))"
-        )->fetchAll();
+        $managerId = HrNotificationRecipients::manager($employeeId);
+        $managers = $managerId ? Database::query('SELECT id, email FROM users WHERE id=?', [$managerId])->fetchAll() : [];
         foreach ($managers as $m) {
             Helpers::notify((int)$m['id'], $title, 'الموظف ' . $employeeName . ' - ' . $body, $link);
             if (!empty($m['email'])) {

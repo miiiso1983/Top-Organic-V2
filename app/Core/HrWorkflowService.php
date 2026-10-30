@@ -298,18 +298,8 @@ class HrWorkflowService
         $title = 'طلب تعيين جديد معتمد';
         $body = 'تمت الموافقة النهائية على طلب تعيين: ' . ($data['job_title'] ?? '') . ' — يرجى إكمال إجراءات التعيين';
         $link = '/hr/hiring-requests/' . $hiringRequestId;
-        $hrRoleId = (int)(Database::query("SELECT id FROM roles WHERE name = 'مدير موارد بشرية' LIMIT 1")->fetchColumn() ?? 0);
-        if ($hrRoleId) {
-            Helpers::notifyRole($hrRoleId, $title, $body, $link);
-        }
-        $users = Database::query(
-            "SELECT DISTINCT u.id FROM users u
-             JOIN role_permissions rp ON rp.role_id = u.role_id
-             JOIN permissions p ON p.id = rp.permission_id
-             WHERE p.code = 'hr.view' AND u.is_active = 1"
-        )->fetchAll();
-        foreach ($users as $u) {
-            Helpers::notify((int)$u['id'], $title, $body, $link);
+        foreach (HrNotificationRecipients::hr() as $uid) {
+            Helpers::notify($uid, $title, $body, $link);
         }
     }
 
@@ -321,18 +311,8 @@ class HrWorkflowService
         $title = 'إيقاف دوام معتمد';
         $body = 'تمت الموافقة على إيقاف دوام الموظف: ' . ($emp['full_name'] ?? '') . ' (' . ($data['suspension_type'] ?? '') . ')';
         $link = '/hr/suspension-requests/' . $suspensionRequestId;
-        $hrRoleId = (int)(Database::query("SELECT id FROM roles WHERE name = 'مدير موارد بشرية' LIMIT 1")->fetchColumn() ?? 0);
-        if ($hrRoleId) {
-            Helpers::notifyRole($hrRoleId, $title, $body, $link);
-        }
-        $users = Database::query(
-            "SELECT DISTINCT u.id FROM users u
-             JOIN role_permissions rp ON rp.role_id = u.role_id
-             JOIN permissions p ON p.id = rp.permission_id
-             WHERE p.code = 'hr.view' AND u.is_active = 1"
-        )->fetchAll();
-        foreach ($users as $u) {
-            Helpers::notify((int)$u['id'], $title, $body, $link);
+        foreach (HrNotificationRecipients::hr() as $uid) {
+            Helpers::notify($uid, $title, $body, $link);
         }
     }
 
@@ -424,18 +404,8 @@ class HrWorkflowService
         if (!$req) return;
         $link = '/hr/overtime/' . $overtimeId;
         $message = ($req['full_name'] ?? '') . ' — ' . $req['request_date'] . ' — ' . $req['hours'] . ' ساعة';
-        $hrRoleId = (int)(Database::query("SELECT id FROM roles WHERE name = 'مدير موارد بشرية' LIMIT 1")->fetchColumn() ?? 0);
-        if ($hrRoleId) {
-            Helpers::notifyRole($hrRoleId, $title, $message, $link);
-        }
-        $users = Database::query(
-            "SELECT DISTINCT u.id FROM users u
-             JOIN role_permissions rp ON rp.role_id = u.role_id
-             JOIN permissions p ON p.id = rp.permission_id
-             WHERE p.code = 'hr.view' AND u.is_active = 1"
-        )->fetchAll();
-        foreach ($users as $u) {
-            Helpers::notify((int)$u['id'], $title, $message, $link);
+        foreach (HrNotificationRecipients::hr() as $uid) {
+            Helpers::notify($uid, $title, $message, $link);
         }
     }
 

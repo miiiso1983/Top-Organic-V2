@@ -76,14 +76,22 @@ class MailService
         Database::query("INSERT INTO internal_mails (sender_id, subject, body) VALUES (?,?,?)", [$senderId, $subject, $body]);
         $mailId = (int)Database::lastInsertId();
 
+        $recipients = array_unique(array_filter(array_map('intval', $recipients),
+            fn($id) => $id > 0 && $id !== $senderId));
         foreach ($recipients as $rid) {
-            Database::query("INSERT IGNORE INTO internal_mail_recipients (mail_id, recipient_id) VALUES (?,?)", [$mailId, $rid]);
+            Database::query("INSERT INTO internal_mail_recipients (mail_id, recipient_id) VALUES (?,?)", [$mailId, $rid]);
         }
         foreach ($targets as $t) {
             Database::query(
                 "INSERT INTO internal_mail_targets (mail_id, target_type, target_id, target_label) VALUES (?,?,?,?)",
                 [$mailId, $t['type'], $t['id'], $t['label']]
             );
+        }
+        // Both web and mobile callers wrap mail, attachments and these queue rows
+        // in the same transaction: failed sends cannot produce phantom alerts.
+        foreach ($recipients as $rid) {
+            Helpers::notify($rid, 'رسالة داخلية جديدة', $subject, '/mail/' . $mailId,
+                $senderId, null, [], null, 'internal_mail', $mailId, 'new_message', [], true);
         }
         return $mailId;
     }

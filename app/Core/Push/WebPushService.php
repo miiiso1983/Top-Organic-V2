@@ -44,10 +44,7 @@ final class WebPushService
     public static function sendToUser(int $userId, string $title, string $body = '', ?string $link = null): int
     {
         if (!self::isConfigured()) return 0;
-        $subs = Database::query(
-            "SELECT * FROM push_subscriptions WHERE user_id = ? AND is_active = 1 AND platform = 'web'",
-            [$userId]
-        )->fetchAll();
+        $subs = \App\Core\Workflow\PushService::subscriptions($userId, ['web']);
         if (!$subs) return 0;
 
         $webPush = new WebPush(['VAPID' => [
