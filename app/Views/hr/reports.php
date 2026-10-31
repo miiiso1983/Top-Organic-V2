@@ -28,6 +28,7 @@ $isMatrix = $type === 'attendance_matrix';
 .attendance-matrix th:first-child{z-index:3;background:var(--surface-alt)}
 .matrix-present{background:var(--success-bg);color:var(--success-text);padding:4px 10px;border-radius:6px;display:inline-block}
 .matrix-absent{background:var(--danger-bg);color:var(--danger-text);padding:4px 10px;border-radius:6px;display:inline-block}
+.matrix-incomplete{background:#fff3cd;color:#664d03;padding:4px 10px;border-radius:6px;display:inline-block}
 .matrix-future{color:var(--text-muted)}
 @media print{.attendance-matrix-scroll{max-height:none;overflow:visible}.attendance-matrix th,.attendance-matrix td{position:static!important}}
 </style>
@@ -61,12 +62,18 @@ $isMatrix = $type === 'attendance_matrix';
     <div class="form-row rpt-generic"><label><?= $isMatrix ? 'حالة الموظف' : 'الحالة' ?></label>
     <?php if ($isMatrix): ?><select name="status"><option value="">كل الحالات</option><?php foreach (['active'=>'نشط','vacation'=>'إجازة','suspended'=>'موقوف','terminated'=>'منتهي الخدمة','resigned'=>'مستقيل'] as $value=>$label): ?><option value="<?= $value ?>" <?= $f['status'] === $value ? 'selected' : '' ?>><?= $label ?></option><?php endforeach; ?></select>
     <?php else: ?><input type="text" name="status" value="<?= Helpers::e($f['status']) ?>" placeholder="approved/pending..."><?php endif; ?></div>
+    <?php if($type==='attendance'): ?><div class="form-row"><label>حالة سجل الحضور</label><select name="attendance_status"><option value="">الكل</option><?php foreach(['حضور مكتمل','حضور مصحح','بصمة ناقصة'] as $state): ?><option value="<?= Helpers::e($state) ?>" <?= ($f['attendance_status']??'')===$state?'selected':'' ?>><?= Helpers::e($state) ?></option><?php endforeach; ?></select></div><?php endif; ?>
     <button class="btn">عرض</button>
   </form>
 </div>
 
+<?php if (!empty($report['summary'])): ?><div class="card" style="display:flex;gap:20px;flex-wrap:wrap">
+<?php foreach($report['summary'] as $label=>$count): ?><span><?= Helpers::e($label) ?>: <strong><?= (int)$count ?></strong></span><?php endforeach; ?>
+<p>الساعات محسوبة من الأوقات المعتمدة. «بصمة ناقصة» تحتاج مراجعة ولا تعني غياباً مؤكداً. التصحيحات القديمة لا يتوفر لها وقت أصلي محفوظ.</p>
+</div><?php endif; ?>
+<?php if ($type==='fingerprint_forgiveness'): ?><div class="card">فلتر الفترة يخص تاريخ البصمة المطلوب تصحيحها، ويظهر تاريخ تقديم الطلب في عمود مستقل.</div><?php endif; ?>
 <?php if ($isMatrix): ?>
-<div class="card"><p>حاضر: توجد بصمة دخول في ذلك التاريخ. غائب: لا توجد بصمة دخول حتى وقت عرض التقرير؛ بصمة الخروج وحدها لا تُحسب حضورًا. المناوبة الليلية تُنسب إلى تاريخ الدخول. الإجازات والعطل لا تغيّر هذه النتيجة.</p>
+<div class="card"><p>حاضر: توجد بصمة دخول في ذلك التاريخ. غائب: لا توجد بصمة دخول حتى وقت عرض التقرير؛ بصمة الخروج المنفردة تظهر «بصمة ناقصة» وتحتاج مراجعة. المناوبة الليلية تُنسب إلى تاريخ الدخول. الإجازات والعطل لا تغيّر هذه النتيجة.</p>
 <?php if (!empty($report['period_label'])): ?><p>النطاق: <?= Helpers::e($report['period_label']) ?></p><?php endif; ?></div>
 <?php endif; ?>
 <?php if (!empty($report['error'])): ?>
@@ -157,7 +164,7 @@ $isMatrix = $type === 'attendance_matrix';
       <?php foreach ($columns as $key): ?>
       <?php $val = $r[$key] ?? ''; ?>
       <td>
-        <?php if ($isMatrix && str_starts_with($key, 'day_')): ?><span class="<?= $val === 'حاضر' ? 'matrix-present' : ($val === 'غائب' ? 'matrix-absent' : 'matrix-future') ?>"><?= Helpers::e((string)$val) ?></span>
+        <?php if ($isMatrix && str_starts_with($key, 'day_')): ?><span class="<?= $val === 'حاضر' ? 'matrix-present' : ($val === 'غائب' ? 'matrix-absent' : ($val === 'بصمة ناقصة' ? 'matrix-incomplete' : 'matrix-future')) ?>"><?= Helpers::e((string)$val) ?></span>
         <?php elseif ($key === 'status' && $val): ?><span class="badge badge-<?= $val==='approved'||$val==='paid'||$val==='settled'||$val==='active'||$val==='fully_approved'?'success':($val==='rejected'?'danger':($val==='cancelled'?'secondary':'warning')) ?>"><?= $statusLabels[$val] ?? $val ?></span>
         <?php elseif ($key === 'adjustment_type'): ?><?= $adjustLabels[$val] ?? $val ?>
         <?php elseif ($key === 'leave_type'): ?><?= $leaveLabels[$val] ?? $val ?>

@@ -14,6 +14,10 @@ if (($argv[1] ?? '') === '--export') {
     $db->exec("UPDATE attendance SET checked_at='2026-10-15 10:00:00' WHERE employee_id=1 AND check_type='in'");
     $db->exec("UPDATE attendance SET checked_at='2026-10-16 12:00:00' WHERE employee_id=1 AND check_type='out'");
     $db->exec("DELETE FROM attendance WHERE employee_id=5 AND check_type='out'");
+    $db->exec("INSERT INTO users VALUES(77,'Synthetic Approver')");
+    $db->exec("INSERT INTO missing_attendance_requests VALUES(91,'Synthetic correction')");
+    $db->exec("UPDATE attendance SET source='request' WHERE id=2");
+    $db->exec("INSERT INTO attendance_corrections VALUES(1,91,2,1,'out','2026-10-16 11:00:00','2026-10-16 12:00:00','mobile',77,'2026-10-17 10:00:00')");
     $_SESSION = ['role_name' => 'مدير النظام', 'perms' => []];
     $_GET = ['type' => 'attendance', 'period' => '2026-10', 'format' => 'excel'];
     (new App\Controllers\HrController())->exportReports();
@@ -53,6 +57,7 @@ try {
         if ($code === 'E' && $sheet->getCell('F' . $row)->getValue() !== 'غير مسجل') {
             throw new RuntimeException('Missing punch must have an explicit label');
         }
+        if($code==='A' && (!str_contains((string)$sheet->getCell('J'.$row)->getValue(),'11:00:00') || !str_contains((string)$sheet->getCell('K'.$row)->getValue(),'طلب #91') || $sheet->getCell('H'.$row)->getValue()!=='حضور مصحح'))throw new RuntimeException('Excel correction provenance missing');
         $found[] = $code;
         $total += (float)$value * 24;
     }

@@ -131,6 +131,19 @@ class WorkflowEngine
     private static function advanceMutation(int $requestId, callable $action): void
     {
         $request = self::getRequest($requestId);
+        if (($request['template_code'] ?? '') === 'hr_missing_attendance') {
+            try {
+                AttendanceCorrectionService::transaction(function() use($requestId,$action) {
+                    Database::query('SELECT id FROM requests WHERE id=? FOR UPDATE',[$requestId])->fetch();
+                    $action();
+                });
+            } catch (\Throwable $e) {
+                // A failed application rolls the decision back; retain a diagnostic on the pending plan.
+                Database::query('UPDATE attendance_correction_plans SET last_error=? WHERE request_id IN (SELECT id FROM missing_attendance_requests WHERE workflow_request_id=?)', [mb_substr($e->getMessage(),0,1000),$requestId]);
+                throw $e;
+            }
+            return;
+        }
         if (!$request || !AdvancePolicyService::isAdvance($request['template_code'])) { $action(); return; }
         AdvancePolicyService::locked((int)$request['requester_employee_id'], function () use ($requestId, $action) {
             Database::query('SELECT id FROM requests WHERE id=? FOR UPDATE', [$requestId])->fetch();
@@ -248,6 +261,7 @@ class WorkflowEngine
         self::validateAdvanceRequest((int)$req['template_id'], $payload, (int)($req['requester_employee_id'] ?? 0), $requestId);
         self::validateLeaveRequest((int)$req['template_id'], $payload);
         self::validateMissingAttendanceRequest((int)$req['template_id'], $payload);
+        if ($req['template_code'] === 'hr_missing_attendance') AttendanceCorrectionService::syncWorkflow($req, $payload);
 
         $status = $req['status'] === 'returned_for_edit' ? 'resubmitted' : 'submitted';
         self::logHistory($requestId, $status, null, $userId, '');
@@ -371,6 +385,7 @@ class WorkflowEngine
 
         self::validateAdvanceRequest((int)$req['template_id'], $payload, (int)($req['requester_employee_id'] ?? 0), $requestId);
         self::validateMissingAttendanceRequest((int)$req['template_id'], $payload);
+        if ($req['template_code'] === 'hr_missing_attendance') AttendanceCorrectionService::syncWorkflow($req, $payload);
         $amount = self::extractAmount($req, $payload);
         $title = (string)($data['title'] ?? $req['title']);
         $notes = (string)($data['notes'] ?? '');
@@ -413,6 +428,7 @@ class WorkflowEngine
     {
         $req = self::getRequest($requestId);
         if (!$req) throw new \RuntimeException('الطلب غير موجود');
+        if ($action==='approved' && $req['status']==='pending' && $req['template_code']==='hr_missing_attendance') AttendanceCorrectionService::syncWorkflow($req,$req['data']);
         // جسر المحرك الديناميكي: القرارات على طلبات المخطط تمر عبر Engine
         if (!empty($req['workflow_version_id'])) {
             \App\Core\Workflow\Engine::decide($requestId, $action, $notes, $userId);

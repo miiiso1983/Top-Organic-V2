@@ -37,16 +37,18 @@ $attQueryPdf = $attQuery ? $attQuery . '&format=pdf' : 'format=pdf';
 <div class="card">
   <h3>سجل يوم <?= Helpers::e($date) ?></h3>
   <table>
-    <tr><th>الموظف</th><th>القسم</th><th>حضور</th><th>انصراف</th><th>ساعات العمل</th><th>المصدر</th></tr>
+    <tr><th>الموظف</th><th>القسم</th><th>حضور</th><th>انصراف</th><th>ساعات العمل</th><th>المصدر</th><th>سجل التصحيح</th></tr>
     <?php foreach ($records as $r):
         $sourceLabels = ['mobile'=>'موبايل','web'=>'ويب','device'=>'جهاز بصمة','request'=>'طلب نسيان بصمة'];
         $sourceText = [];
         foreach ($r['sources'] as $s) {
             $sourceText[] = $sourceLabels[$s] ?? $s;
         }
+        $corrections = [];
         $inLines = [];
         $outLines = [];
         foreach ($r['pairs'] as $p) {
+            foreach(['in_record','out_record'] as $key)if(!empty($p[$key]['correction_details']))$corrections[]=$p[$key]['correction_details'];
             $inLines[] = Helpers::e($p['in'] === '-' ? 'غير مسجل' : $p['in']);
             $outLines[] = Helpers::e($p['out'] === '-' ? 'غير مسجل' : $p['out']);
         }
@@ -62,8 +64,9 @@ $attQueryPdf = $attQuery ? $attQuery . '&format=pdf' : 'format=pdf';
       <td><?= implode('<br>', $outLines) ?></td>
       <td><?= Helpers::e($r['total_hours']) ?></td>
       <td><?= implode(' + ', $sourceText) ?></td>
+      <td><?= nl2br(Helpers::e(implode("\n",array_unique($corrections)) ?: '—')) ?></td>
     </tr>
     <?php endforeach; ?>
-    <?php if (!$records): ?><tr><td colspan="6">لا توجد سجلات لهذا اليوم</td></tr><?php endif; ?>
+    <?php if (!$records): ?><tr><td colspan="7">لا توجد سجلات لهذا اليوم</td></tr><?php endif; ?>
   </table>
 </div>

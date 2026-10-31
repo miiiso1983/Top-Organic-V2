@@ -1270,6 +1270,7 @@ class HrController extends Controller
             [$from, $to]
         )->fetchAll();
 
+        $raw = \App\Core\AttendanceCorrectionService::annotate($raw);
         $employeeIds = array_unique(array_map(fn ($r) => (int)$r['employee_id'], $raw));
         $shiftMap = HrService::loadShiftMap($employeeIds, $from, $to);
         return HrService::pairAndGroupAttendance($raw, $shiftMap, $date);
@@ -5288,6 +5289,7 @@ class HrController extends Controller
             'department_id' => (int)($_GET['department_id'] ?? 0),
             'status' => (string)($_GET['status'] ?? ''),
             'job_id' => (int)($_GET['job_id'] ?? 0),
+            'attendance_status' => (string)($_GET['attendance_status'] ?? ''),
         ];
         $report = HrReportService::getReport($type, $filters);
         if ($type === 'attendance_matrix' && isset($report['filters'])) $filters = array_replace($filters, $report['filters']);
@@ -5321,6 +5323,7 @@ class HrController extends Controller
             'department_id' => (int)($_GET['department_id'] ?? 0),
             'status' => (string)($_GET['status'] ?? ''),
             'job_id' => (int)($_GET['job_id'] ?? 0),
+            'attendance_status' => (string)($_GET['attendance_status'] ?? ''),
         ];
         $report = HrReportService::getReport($type, $filters);
         if ($type === 'attendance_matrix' && isset($report['filters'])) $filters = array_replace($filters, $report['filters']);
@@ -7591,7 +7594,7 @@ class HrController extends Controller
         $date = (string)($_GET['date'] ?? date('Y-m-d'));
         $records = $this->getAttendanceDayRecords($date);
         $rows = [];
-        $sourceLabels = ['mobile'=>'موبايل','web'=>'ويب','device'=>'جهاز بصمة'];
+        $sourceLabels = ['mobile'=>'موبايل','web'=>'ويب','device'=>'جهاز بصمة','request'=>'طلب معتمد'];
         $format = strtolower($_GET['format'] ?? 'excel');
         $pairSeparator = $format === 'pdf' ? ' / ' : "\n";
         foreach ($records as $r) {
@@ -7599,9 +7602,11 @@ class HrController extends Controller
             foreach ($r['sources'] as $s) {
                 $sourceText[] = $sourceLabels[$s] ?? $s;
             }
+            $corrections = [];
             $inText = [];
             $outText = [];
             foreach ($r['pairs'] as $p) {
+                foreach(['in_record','out_record'] as $key)if(!empty($p[$key]['correction_details']))$corrections[]=$p[$key]['correction_details'];
                 $inText[] = $p['in'] === '-' ? 'غير مسجل' : $p['in'];
                 $outText[] = $p['out'] === '-' ? 'غير مسجل' : $p['out'];
             }
@@ -7615,10 +7620,11 @@ class HrController extends Controller
                 implode($pairSeparator, $inText),
                 implode($pairSeparator, $outText),
                 $r['total_hours'],
-                implode(' + ', $sourceText)
+                implode(' + ', $sourceText),
+                implode($pairSeparator,array_unique($corrections)) ?: '—'
             ];
         }
-        $headers = ['الموظف', 'القسم', 'حضور', 'انصراف', 'ساعات العمل', 'المصدر'];
+        $headers = ['الموظف', 'القسم', 'حضور', 'انصراف', 'ساعات العمل', 'المصدر', 'سجل التصحيح'];
         if ($format === 'pdf') {
             ExportHelper::pdf("attendance_export_$date.pdf", ['title' => 'الحضور والانصراف', 'period' => "تاريخ: $date", 'headers' => $headers, 'rows' => $rows]);
         } else {

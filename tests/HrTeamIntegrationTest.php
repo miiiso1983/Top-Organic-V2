@@ -59,6 +59,7 @@ namespace {
     function rejected(callable $action,string $message):void {try{$action();}catch(RuntimeException $e){return;}throw new RuntimeException($message);}
     function controllerAction(callable $action):void { $_SESSION['flash']=[];try{$action();}catch(App\Core\TestRedirect $e){} }
 
+    $correctionMigration=str_replace('CREATE TABLE IF NOT EXISTS','CREATE TEMPORARY TABLE IF NOT EXISTS',file_get_contents(__DIR__.'/../scripts/migrate_attendance_corrections.php')); eval('?>'.$correctionMigration);
     foreach([1=>'مدير النظام',2=>'مدير قسم',3=>'موظف',4=>'مدير قسم الموارد البشرية',5=>'مدير مالي'] as $id=>$name)seed('roles',['id'=>$id,'name'=>$name,'level'=>$id===3?10:60]);
     foreach([1=>3,2=>2,3=>2,4=>4,5=>2,6=>3,7=>2,8=>5] as $id=>$role){
         seed('users',['id'=>$id,'role_id'=>$role,'username'=>'team-test-'.$id,'full_name'=>'Synthetic '.$id,'is_active'=>1]);

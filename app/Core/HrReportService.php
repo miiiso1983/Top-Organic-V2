@@ -146,18 +146,23 @@ class HrReportService
         $employees = Database::query("SELECT e.id,e.full_name,COALESCE(d.name,e.department,'—') AS department
             FROM employees e LEFT JOIN departments d ON d.id=e.department_id
             WHERE $where ORDER BY e.full_name,e.id", $params)->fetchAll();
-        $punches = Database::query("SELECT a.employee_id,DATE(a.checked_at) AS attendance_day
-            FROM attendance a JOIN employees e ON e.id=a.employee_id
-            WHERE $where AND a.check_type='in' AND a.checked_at>=? AND a.checked_at<?
-            GROUP BY a.employee_id,DATE(a.checked_at)",
-            [...$params,$from.' 00:00:00',$end->modify('+1 day')->format('Y-m-d').' 00:00:00'])->fetchAll();
-        $present = [];
-        foreach ($punches as $punch) $present[(int)$punch['employee_id']][$punch['attendance_day']] = true;
+        $punches = Database::query("SELECT a.employee_id,a.check_type,a.checked_at FROM attendance a JOIN employees e ON e.id=a.employee_id
+            WHERE $where AND a.checked_at>=? AND a.checked_at<? ORDER BY a.employee_id,a.checked_at,a.check_type",
+            [...$params,$start->modify('-2 days')->format('Y-m-d').' 00:00:00',$end->modify('+1 day')->format('Y-m-d').' 00:00:00'])->fetchAll();
+        $present=[];$incomplete=[];$open=[];
+        foreach($punches as $punch){
+            $eid=(int)$punch['employee_id'];$day=substr($punch['checked_at'],0,10);
+            if($punch['check_type']==='in'){$present[$eid][$day]=true;$open[$eid]=$punch['checked_at'];}
+            elseif($punch['check_type']==='out'){
+                if(empty($open[$eid]) || strtotime($punch['checked_at'])-strtotime($open[$eid])>172800)$incomplete[$eid][$day]=true;
+                unset($open[$eid]);
+            }
+        }
         foreach ($employees as $employee) {
             $row = ['full_name'=>$employee['full_name'],'department'=>$employee['department']];
             foreach ($report['dates'] as $date) {
                 $row['day_'.$date] = isset($present[(int)$employee['id']][$date]) ? 'حاضر'
-                    : ($date > $today->format('Y-m-d') ? 'لم يأتِ بعد' : 'غائب');
+                    : ($date > $today->format('Y-m-d') ? 'لم يأتِ بعد' : (isset($incomplete[(int)$employee['id']][$date]) ? 'بصمة ناقصة' : 'غائب'));
             }
             $report['rows'][] = $row;
         }
@@ -318,17 +323,27 @@ class HrReportService
             array_merge($p, ($rangeFrom && $rangeTo ? [$rangeFrom, $rangeTo] : []))
         )->fetchAll();
 
+        $raw = AttendanceCorrectionService::annotate($raw);
         $employeeIds = array_unique(array_map(fn ($r) => (int)$r['employee_id'], $raw));
         $shiftMap = HrService::loadShiftMap($employeeIds, $rangeFrom, $rangeTo);
         $groups = HrService::pairAndGroupAttendance($raw, $shiftMap, null, $from, $to);
 
         $rows = [];
         foreach ($groups as $g) {
+            $originalIn = []; $originalOut = []; $details = []; $incomplete = false; $corrected = false;
             $inLines = [];
             $outLines = [];
             foreach ($g['pairs'] as $pair) {
                 $inLines[] = $pair['in'] === '-' ? 'غير مسجل' : $pair['in'];
                 $outLines[] = $pair['out'] === '-' ? 'غير مسجل' : $pair['out'];
+                $incomplete = $incomplete || $pair['in']==='-' || $pair['out']==='-';
+                foreach(['in','out'] as $kind){
+                    $record=$pair[$kind.'_record']??[];
+                    $isRequest=($record['source']??'')==='request';$corrected=$corrected||$isRequest;
+                    $original=$isRequest ? (!empty($record['corrections']) ? ($record['original_at']??'غير مسجل') : 'غير محفوظ سابقاً') : ($record['checked_at']??'غير مسجل');
+                    if($kind==='in')$originalIn[]=$original;else $originalOut[]=$original;
+                    if(!empty($record['correction_details']))$details[]=$record['correction_details'];
+                }
             }
             if (!$inLines) {
                 $inLines[] = 'غير مسجل';
@@ -342,14 +357,21 @@ class HrReportService
                 'check_in' => implode("\n", $inLines),
                 'check_out' => implode("\n", $outLines),
                 'total_hours' => $g['total_hours'],
+                'attendance_status' => $incomplete ? 'بصمة ناقصة' : ($corrected ? 'حضور مصحح' : 'حضور مكتمل'),
+                'original_in' => implode("\n",$originalIn),
+                'original_out' => implode("\n",$originalOut),
+                'correction_details' => implode("\n",array_unique($details)) ?: '—',
             ];
         }
 
+        $summary=array_count_values(array_column($rows,'attendance_status'));
+        if(!empty($filters['attendance_status']))$rows=array_values(array_filter($rows,fn($row)=>$row['attendance_status']===$filters['attendance_status']));
         return [
             'title' => 'تقرير الحضور والانصراف التفصيلي',
-            'columns' => ['emp_code','full_name','department','work_date','check_in','check_out','total_hours'],
-            'headers' => ['الكود','الموظف','القسم','التاريخ','وقت الدخول','وقت الخروج','إجمالي وقت الدوام'],
+            'columns' => ['emp_code','full_name','department','work_date','check_in','check_out','total_hours','attendance_status','original_in','original_out','correction_details'],
+            'headers' => ['الكود','الموظف','القسم','التاريخ','وقت الدخول','وقت الخروج','إجمالي وقت الدوام','حالة السجل','الدخول الأصلي','الخروج الأصلي','سجل التصحيح: الطلب / قبل وبعد / المعتمد / تاريخ الاعتماد / السبب'],
             'rows' => $rows,
+            'summary' => $summary,
         ];
     }
 
@@ -889,7 +911,7 @@ class HrReportService
 
     /**
      * تقرير طلبات نسيان البصمة: المصدر الفعلي هو جدول missing_attendance_requests.
-     * عمود التاريخ المعروض هو created_at (تاريخ تقديم الطلب) وليس clock_in_at/clock_out_at (تاريخ البصمة الفعلي).
+     * فلتر الفترة يعتمد تاريخ البصمة، ويعرض تاريخ تقديم الطلب وتطبيقه بصورة مستقلة.
      * اسم الموافق يُستخرج من محرك سير العمل (request_step_decisions.actor_id -> users.full_name)
      * عبر workflow_request_id، لأن أعمدة manager_approved_by/grand_manager_approved_by في الجدول نفسه
      * غير مضمونة التعبئة دائماً ضمن مسار الاعتماد الحالي عبر محرك سير العمل.
@@ -897,9 +919,9 @@ class HrReportService
     public static function fingerprintForgiveness(array $filters): array
     {
         [$w, $p] = self::buildFilter($filters, 'status', 'mar');
-        self::applyPeriodDateRange('mar.created_at', $filters, $w, $p);
+        self::applyPeriodDateRange('COALESCE(mar.clock_in_at,mar.clock_out_at)', $filters, $w, $p);
         $rows = Database::query(
-            "SELECT mar.id, mar.created_at AS request_date, mar.request_type, mar.reason, mar.status,
+            "SELECT mar.id, mar.created_at AS request_date, mar.clock_in_at, mar.clock_out_at, mar.request_type, mar.reason, mar.status, cp.applied_at, cp.last_error,
                     e.full_name, e.emp_code, COALESCE(report_department.name, e.department) AS department, e.branch_id,
                     COALESCE((
                         SELECT u.full_name FROM request_step_decisions rsd
@@ -909,15 +931,19 @@ class HrReportService
                     ), '—') AS approved_by_name
              FROM missing_attendance_requests mar
              JOIN employees e ON e.id = mar.employee_id
+             LEFT JOIN attendance_correction_plans cp ON cp.request_id=mar.id
              LEFT JOIN departments report_department ON report_department.id = e.department_id
              WHERE $w
              ORDER BY mar.created_at DESC",
             $p
         )->fetchAll();
+        foreach($rows as &$row){
+            $row['application_status']=!empty($row['applied_at'])?'معتمد ومطبق':(!empty($row['last_error'])?'تعذر التطبيق — يلزم المراجعة':($row['status']==='fully_approved'?'اعتماد سابق — دون سجل تطبيق':($row['status']==='rejected'?'مرفوض':'بانتظار الموافقة')));
+        }unset($row);
         return [
             'title' => 'تقرير طلبات نسيان البصمة',
-            'columns' => ['full_name', 'request_date', 'request_type', 'approved_by_name', 'reason'],
-            'headers' => ['اسم مقدم الطلب', 'التاريخ', 'نوع الطلب', 'اسم الموافق', 'سبب التأخير / النسيان'],
+            'columns' => ['id','full_name','request_date','clock_in_at','clock_out_at','request_type','application_status','approved_by_name','applied_at','reason','last_error'],
+            'headers' => ['رقم الطلب','اسم مقدم الطلب','تاريخ التقديم','الدخول المطلوب','الخروج المطلوب','نوع البصمة','حالة التطبيق','اسم الموافق','تاريخ التطبيق','السبب','سبب تعذر التطبيق'],
             'rows' => $rows,
         ];
     }

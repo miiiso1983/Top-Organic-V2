@@ -428,21 +428,8 @@ class HrWorkflowService
                  WHERE id = ?",
                 [$actorId, $requestId]
             );
-        } elseif ($stepOrder === 2) {
-            try {
-                HrService::applyMissingAttendanceRequest($requestId);
-            } catch (\Throwable $e) {
-                Helpers::audit('missing_attendance_apply_failed', 'missing_attendance_requests', $requestId, $e->getMessage());
-            }
-            Database::query(
-                "UPDATE missing_attendance_requests
-                 SET status = 'fully_approved', grand_manager_approved_by = ?, grand_manager_approved_at = NOW(),
-                     rejected_by = NULL, rejected_at = NULL, rejected_notes = NULL
-                 WHERE id = ?",
-                [$actorId, $requestId]
-            );
-            // الإشعار يتم من معالج النتيجة (Outcome Handler) عند الموافقة النهائية.
         }
+        // Apply only from the final outcome, never from an intermediate numbered step.
     }
 
     public static function onMissingAttendanceOutcome(array $request, string $status, int $actorId, string $notes): void
@@ -468,20 +455,8 @@ class HrWorkflowService
         }
 
         if ($status === 'approved') {
-            $current = Database::query("SELECT status FROM missing_attendance_requests WHERE id = ?", [$requestId])->fetchColumn();
-            if ($current !== 'fully_approved') {
-                try {
-                    HrService::applyMissingAttendanceRequest($requestId);
-                } catch (\Throwable $e) {
-                    Helpers::audit('missing_attendance_apply_failed', 'missing_attendance_requests', $requestId, $e->getMessage());
-                }
-                Database::query(
-                    "UPDATE missing_attendance_requests
-                     SET status = 'fully_approved', grand_manager_approved_by = ?, grand_manager_approved_at = NOW()
-                     WHERE id = ?",
-                    [$actorId, $requestId]
-                );
-            }
+            HrService::applyMissingAttendanceRequest($requestId, $actorId);
+            Database::query("UPDATE missing_attendance_requests SET status='fully_approved', grand_manager_approved_by=?, grand_manager_approved_at=NOW() WHERE id=?", [$actorId,$requestId]);
             self::notifyEmployee($request, $status);
         }
     }

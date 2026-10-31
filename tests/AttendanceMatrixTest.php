@@ -23,7 +23,7 @@ $r=HrReportService::getReport('attendance_matrix',$f);
 check($r['headers']===['اسم الموظف','القسم','2024-02-28','2024-02-29','2024-03-01'],'Explicit dates, leap day, and month boundary');
 check(count($r['rows'])===3,'All employees, including no punches and duplicate names');
 check($r['rows'][0]===['full_name'=>'اسم متشابه','department'=>'الصالة','day_2024-02-28'=>'حاضر','day_2024-02-29'=>'غائب','day_2024-03-01'=>'حاضر'],'Clock-in date, overnight clock-out, midnight and canonical department');
-check($r['rows'][1]['day_2024-02-28']==='غائب'&&$r['rows'][1]['day_2024-02-29']==='حاضر','Out-only, last second and distinct employee IDs');
+check($r['rows'][1]['day_2024-02-28']==='بصمة ناقصة'&&$r['rows'][1]['day_2024-02-29']==='حاضر','Out-only, last second and distinct employee IDs');
 check($r['rows'][2]['day_2024-02-28']==='غائب','Employee with zero attendance');
 check(count(HrReportService::attendanceMatrix($f+['department_id'=>1])['rows'])===1,'Department filter');
 check(count(HrReportService::attendanceMatrix($f+['branch_id'=>1])['rows'])===2,'Branch filter');

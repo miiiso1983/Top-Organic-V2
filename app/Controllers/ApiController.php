@@ -1240,6 +1240,9 @@ class ApiController extends Controller
         }
 
         $payload = [
+            'correction_mode' => (string)($b['correction_mode'] ?? 'auto'),
+            'original_in_at' => $b['original_in_at'] ?? null,
+            'original_out_at' => $b['original_out_at'] ?? null,
             'request_type' => (string)($b['request_type'] ?? 'in'),
             'clock_in_at' => ($b['clock_in_at'] ?? '') ?: null,
             'clock_out_at' => ($b['clock_out_at'] ?? '') ?: null,
@@ -1251,6 +1254,9 @@ class ApiController extends Controller
             $wfRequestId = HrWorkflowService::request('missing_attendance_request', $requestId, (int)$user['id'], [
                 'employee_id' => (int)$emp['id'],
                 'employee_name' => $emp['full_name'] ?? '',
+                'correction_mode' => $payload['correction_mode'],
+                'original_in_at' => $payload['original_in_at'],
+                'original_out_at' => $payload['original_out_at'],
                 'request_type' => $payload['request_type'],
                 'clock_in_at' => $payload['clock_in_at'],
                 'clock_out_at' => $payload['clock_out_at'],
@@ -2103,6 +2109,9 @@ class ApiController extends Controller
         }
         $b = $this->body();
         $payload = [
+            'correction_mode' => (string)($b['correction_mode'] ?? 'auto'),
+            'original_in_at' => $b['original_in_at'] ?? null,
+            'original_out_at' => $b['original_out_at'] ?? null,
             'request_type' => (string)($b['request_type'] ?? 'in'),
             'clock_in_at' => ($b['clock_in_at'] ?? '') ?: null,
             'clock_out_at' => ($b['clock_out_at'] ?? '') ?: null,
@@ -2113,6 +2122,9 @@ class ApiController extends Controller
             $wfRequestId = HrWorkflowService::request('missing_attendance_request', $requestId, (int)$user['id'], [
                 'employee_id' => $employeeId,
                 'employee_name' => $emp['full_name'] ?? '',
+                'correction_mode' => $payload['correction_mode'],
+                'original_in_at' => $payload['original_in_at'],
+                'original_out_at' => $payload['original_out_at'],
                 'request_type' => $payload['request_type'],
                 'clock_in_at' => $payload['clock_in_at'],
                 'clock_out_at' => $payload['clock_out_at'],
@@ -3328,6 +3340,9 @@ class ApiController extends Controller
             }
             try {
                 $maId = HrService::createMissingAttendanceRequest($empId, [
+                    'correction_mode' => (string)($data['correction_mode'] ?? 'auto'),
+                    'original_in_at' => $data['original_in_at'] ?? null,
+                    'original_out_at' => $data['original_out_at'] ?? null,
                     'request_type' => (string)($data['request_type'] ?? 'in'),
                     'clock_in_at' => ($data['clock_in_at'] ?? '') ?: null,
                     'clock_out_at' => ($data['clock_out_at'] ?? '') ?: null,
@@ -3343,6 +3358,7 @@ class ApiController extends Controller
 
         try {
             $id = WorkflowEngine::createRequest($templateId, $userId, $data);
+            if ($maId) Database::query('UPDATE missing_attendance_requests SET workflow_request_id=? WHERE id=?',[$id,$maId]);
             WorkflowEngine::submitRequest($id, $userId);
 
             if ($adjId) {

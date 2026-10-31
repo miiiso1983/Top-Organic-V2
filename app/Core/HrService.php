@@ -2043,7 +2043,7 @@ class HrService
         $baseParams = [$employeeId];
         $rangeParams = $from ? [$from, $to] : [];
 
-        $attendanceSql = "SELECT check_type, checked_at, source, within_geofence FROM attendance WHERE employee_id = ?";
+        $attendanceSql = "SELECT id, check_type, checked_at, source, within_geofence FROM attendance WHERE employee_id = ?";
         $leavesSql = "SELECT leave_type, date_from, date_to, status, reason FROM leave_requests WHERE employee_id = ?";
         $advancesSql = "SELECT amount, advance_type, installments, status, reason, created_at FROM salary_advances WHERE employee_id = ?";
         $adjustmentsSql = "SELECT adjustment_type, amount, effective_date, status, reason FROM hr_adjustments WHERE employee_id = ?";
@@ -2061,7 +2061,7 @@ class HrService
         $adjustmentsSql .= " ORDER BY effective_date DESC";
 
         return [
-            'attendance' => Database::query($attendanceSql, array_merge($baseParams, $rangeParams))->fetchAll(),
+            'attendance' => AttendanceCorrectionService::annotate(Database::query($attendanceSql, array_merge($baseParams, $rangeParams))->fetchAll()),
             'leaves' => Database::query($leavesSql, array_merge($baseParams, $rangeParams))->fetchAll(),
             'advances' => Database::query($advancesSql, array_merge($baseParams, $rangeParams))->fetchAll(),
             'adjustments' => Database::query($adjustmentsSql, array_merge($baseParams, $rangeParams))->fetchAll(),
@@ -3310,6 +3310,11 @@ class HrService
      */
     public static function createMissingAttendanceRequest(int $employeeId, array $payload): int
     {
+        return AttendanceCorrectionService::transaction(fn() => self::createMissingAttendanceRequestInternal($employeeId, $payload));
+    }
+
+    private static function createMissingAttendanceRequestInternal(int $employeeId, array $payload): int
+    {
         if (!self::isEmployeeFileOpen($employeeId)) {
             throw new \RuntimeException('ملف الموظف مغلق أو مأرشف');
         }
@@ -3317,8 +3322,8 @@ class HrService
         if (!in_array($requestType, ['in', 'out', 'both'], true)) {
             throw new \RuntimeException('نوع البصمة يجب أن يكون دخول أو خروج أو كلاهما');
         }
-        $clockInAt = !empty($payload['clock_in_at']) ? (string)$payload['clock_in_at'] : null;
-        $clockOutAt = !empty($payload['clock_out_at']) ? (string)$payload['clock_out_at'] : null;
+        $clockInAt = !empty($payload['clock_in_at']) ? AttendanceCorrectionService::timestamp((string)$payload['clock_in_at']) : null;
+        $clockOutAt = !empty($payload['clock_out_at']) ? AttendanceCorrectionService::timestamp((string)$payload['clock_out_at']) : null;
 
         if ($requestType === 'in' && !$clockInAt) {
             throw new \RuntimeException('تاريخ/وقت بصمة الدخول مطلوب');
@@ -3343,6 +3348,7 @@ class HrService
             throw new \RuntimeException('سبب/توضيح طلب نسيان البصمة مطلوب');
         }
 
+        $plan = AttendanceCorrectionService::prepare($employeeId, $payload);
         Database::query(
             "INSERT INTO missing_attendance_requests
              (employee_id, request_type, clock_in_at, clock_out_at, reason, status)
@@ -3354,7 +3360,9 @@ class HrService
                 'pending',
             ]
         );
-        return (int)Database::lastInsertId();
+        $id = (int)Database::lastInsertId();
+        AttendanceCorrectionService::remember($id, $employeeId, $plan);
+        return $id;
     }
 
     private static function isValidDateTime(string $value): bool
@@ -3367,77 +3375,9 @@ class HrService
      *
      * @return array<int,array{id:int,type:string,action:string}>
      */
-    public static function applyMissingAttendanceRequest(int $requestId): array
+    public static function applyMissingAttendanceRequest(int $requestId, int $actorId = 0): array
     {
-        $req = Database::query("SELECT * FROM missing_attendance_requests WHERE id = ?", [$requestId])->fetch();
-        if (!$req) {
-            throw new \RuntimeException('طلب نسيان البصمة غير موجود');
-        }
-        $employeeId = (int)$req['employee_id'];
-        $requestType = (string)$req['request_type'];
-        $result = [];
-
-        if (in_array($requestType, ['in', 'both'], true) && !empty($req['clock_in_at'])) {
-            $result[] = self::upsertMissingAttendanceRecord($employeeId, 'in', (string)$req['clock_in_at']);
-        }
-        if (in_array($requestType, ['out', 'both'], true) && !empty($req['clock_out_at'])) {
-            $result[] = self::upsertMissingAttendanceRecord($employeeId, 'out', (string)$req['clock_out_at']);
-        }
-
-        // حل أي تنبيهات مفتوحة لنفس اليوم إن وُجدت
-        $affectedDates = array_values(array_unique(array_map(
-            static fn($r) => date('Y-m-d', strtotime($r['checked_at'] ?? 'now')),
-            $result
-        )));
-        foreach ($affectedDates as $date) {
-            Database::query(
-                "UPDATE attendance_alerts SET status = 'resolved'
-                 WHERE employee_id = ? AND alert_date = ? AND status = 'new'",
-                [$employeeId, $date]
-            );
-            // إعادة احتساب التأخير/الخروج المبكر/الإضافي لنفس اليوم بناءً على البصمة المضافة/المعدلة
-            self::recalculateAttendanceForDate($employeeId, $date);
-        }
-
-        return $result;
-    }
-
-    /**
-     * إدراج بصمة غير موجودة أو تحديث بصمة موجودة بنفس اليوم ونفس النوع.
-     */
-    private static function upsertMissingAttendanceRecord(int $employeeId, string $type, string $checkedAt): array
-    {
-        $date = date('Y-m-d', strtotime($checkedAt));
-        $existing = Database::query(
-            "SELECT id FROM attendance
-             WHERE employee_id = ? AND check_type = ? AND DATE(checked_at) = ?
-             ORDER BY checked_at ASC LIMIT 1",
-            [$employeeId, $type, $date]
-        )->fetch();
-
-        // تأكد من أن عمود source يدعم 'request'
-        self::ensureAttendanceSourceSupportsRequest();
-
-        if ($existing) {
-            Database::query(
-                "UPDATE attendance SET checked_at = ?, source = 'request', within_geofence = 1, notes = ?
-                 WHERE id = ?",
-                [$checkedAt, 'تم التعديل عبر طلب نسيان بصمة', (int)$existing['id']]
-            );
-            return ['id' => (int)$existing['id'], 'type' => $type, 'action' => 'updated', 'checked_at' => $checkedAt];
-        }
-
-        Database::query(
-            "INSERT INTO attendance (employee_id, check_type, checked_at, latitude, longitude, photo, source, within_geofence, notes)
-             VALUES (?, ?, ?, NULL, NULL, NULL, 'request', 1, ?)",
-            [$employeeId, $type, $checkedAt, 'تم الإدراج عبر طلب نسيان بصمة']
-        );
-        return [
-            'id' => (int)Database::lastInsertId(),
-            'type' => $type,
-            'action' => 'inserted',
-            'checked_at' => $checkedAt,
-        ];
+        return AttendanceCorrectionService::apply($requestId, $actorId);
     }
 
     /** تأكد من وجود أعمدة ترحيل عجز الراتب إلى سلفة (deficit_amount / source_payroll_id) */
@@ -3863,48 +3803,35 @@ class HrService
      */
     public static function recalculateAttendanceForDate(int $employeeId, string $date): void
     {
-        $employee = Database::query("SELECT attendance_type FROM employees WHERE id = ?", [$employeeId])->fetch();
-        if (!$employee) return;
-        if (($employee['attendance_type'] ?? '') === 'flexible') return;
-
-        $rows = Database::query(
-            "SELECT id, check_type, checked_at FROM attendance WHERE employee_id = ? AND DATE(checked_at) = ?",
-            [$employeeId, $date]
-        )->fetchAll();
-        if (!$rows) return;
-
-        $shift = self::getEmployeeShift($employeeId, $date);
-        if (!$shift) return;
-
-        $segments = $shift['segments'] ?? [];
-        if (empty($segments) && !empty($shift['start_time'])) {
-            $segments = [['start_time' => $shift['start_time'], 'end_time' => $shift['end_time']]];
-        }
-        if (empty($segments)) return;
-
-        foreach ($rows as $row) {
-            $lateMinutes = 0;
-            $earlyMinutes = 0;
-            $overtimeMinutes = 0;
-            $checkedAt = new \DateTime((string)$row['checked_at']);
-            $closestSeg = self::findClosestSegment($segments, $checkedAt, $date);
-            $segStart = new \DateTime($date . ' ' . $closestSeg['start_time']);
-            $segEnd = new \DateTime($date . ' ' . $closestSeg['end_time']);
-            if ($row['check_type'] === 'in') {
-                if ($checkedAt > $segStart) {
-                    $lateMinutes = max(0, (int)floor(($checkedAt->getTimestamp() - $segStart->getTimestamp()) / 60));
-                }
-            } else {
-                if ($checkedAt < $segEnd) {
-                    $earlyMinutes = max(0, (int)floor(($segEnd->getTimestamp() - $checkedAt->getTimestamp()) / 60));
-                } elseif ($checkedAt > $segEnd) {
-                    $overtimeMinutes = max(0, (int)floor(($checkedAt->getTimestamp() - $segEnd->getTimestamp()) / 60));
+        $employee=Database::query('SELECT attendance_type FROM employees WHERE id=?',[$employeeId])->fetch();
+        if(!$employee || $employee['attendance_type']==='flexible')return;
+        $from=date('Y-m-d',strtotime($date.' -1 day'));$to=date('Y-m-d',strtotime($date.' +2 days'));
+        $rows=Database::query('SELECT id,employee_id,check_type,checked_at,source FROM attendance WHERE employee_id=? AND checked_at>=? AND checked_at<? ORDER BY checked_at,id',[$employeeId,$from.' 00:00:00',$to.' 00:00:00'])->fetchAll();
+        $map=self::loadShiftMap([$employeeId],$from,$to);
+        foreach(self::pairAndGroupAttendance($rows,$map,$date) as $group){
+            $shift=self::getEmployeeShift($employeeId,$group['work_date']);
+            if(!$shift)continue;
+            $segments=$shift['segments']??[];
+            if(!$segments && !empty($shift['start_time']))$segments=[['start_time'=>$shift['start_time'],'end_time'=>$shift['end_time']]];
+            if(!$segments)continue;
+            foreach($group['pairs'] as $pair){
+                $anchor=$pair['in_record']??$pair['out_record']??null;if(!$anchor)continue;
+                $seg=self::findClosestSegment($segments,new \DateTime($anchor['checked_at']),$group['work_date']);
+                $start=new \DateTime($group['work_date'].' '.$seg['start_time']);$end=new \DateTime($group['work_date'].' '.$seg['end_time']);
+                if($end<=$start)$end->modify('+1 day');
+                foreach(['in','out'] as $kind){
+                    $row=$pair[$kind.'_record']??null;if(!$row)continue;
+                    $time=strtotime($row['checked_at']);$late=$early=$extra=0;
+                    if($kind==='in')$late=max(0,(int)floor(($time-$start->getTimestamp())/60));
+                    else{$early=max(0,(int)floor(($end->getTimestamp()-$time)/60));$extra=max(0,(int)floor(($time-$end->getTimestamp())/60));}
+                    Database::query('UPDATE attendance SET late_minutes=?,early_minutes=?,overtime_minutes=? WHERE id=?',[$late,$early,$extra,$row['id']]);
                 }
             }
-            Database::query(
-                "UPDATE attendance SET late_minutes = ?, early_minutes = ?, overtime_minutes = ? WHERE id = ?",
-                [$lateMinutes, $earlyMinutes, $overtimeMinutes, (int)$row['id']]
-            );
+            // Resolve only the missing-punch alert actually repaired, not unrelated alerts.
+            $missingIn=$missingOut=false;
+            foreach($group['pairs'] as $pair){$missingIn=$missingIn||$pair['in']==='-';$missingOut=$missingOut||$pair['out']==='-';}
+            foreach(['missing_clockin'=>$missingIn,'missing_clockout'=>$missingOut] as $type=>$missing)
+                if(!$missing)Database::query("UPDATE attendance_alerts SET status='resolved' WHERE employee_id=? AND alert_date=? AND alert_type=? AND status='new'",[$employeeId,$date,$type]);
         }
     }
 
@@ -4092,6 +4019,7 @@ class HrService
         $group['total_seconds'] += $diffSeconds;
         $group['pairs'][] = [
             'in' => self::formatAttendanceTime((string)$inRecord['checked_at'], $workDate),
+            'in_record' => $inRecord, 'out_record' => $outRecord,
             'out' => self::formatAttendanceTime((string)$outRecord['checked_at'], $workDate),
         ];
         $inTs = (string)$inRecord['checked_at'];
@@ -4116,6 +4044,7 @@ class HrService
     {
         $group['pairs'][] = [
             'in' => self::formatAttendanceTime((string)$record['checked_at'], $workDate),
+            'in_record' => $record,
             'out' => '-',
         ];
         $ts = (string)$record['checked_at'];
@@ -4134,6 +4063,7 @@ class HrService
         $group['pairs'][] = [
             'in' => '-',
             'out' => self::formatAttendanceTime((string)$record['checked_at'], $workDate),
+            'out_record' => $record,
         ];
         $ts = (string)$record['checked_at'];
         if ($group['last_out'] === null || $ts > $group['last_out']) {
@@ -4148,7 +4078,7 @@ class HrService
     private static function attendanceWorkDate(array $record, ?array $shift): string
     {
         $recordDate = date('Y-m-d', strtotime((string)$record['checked_at']));
-        if (!$shift || ($shift['default']['attendance_type'] ?? 'shift') === 'flexible' || ($record['source'] ?? '') === 'request') {
+        if (!$shift || ($shift['default']['attendance_type'] ?? 'shift') === 'flexible') {
             return $recordDate;
         }
         $startTime = $shift['overrides'][$recordDate]['start_time'] ?? $shift['default']['start_time'] ?? null;

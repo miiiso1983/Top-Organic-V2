@@ -1796,6 +1796,68 @@ class _WorkflowCreateScreenState extends State<WorkflowCreateScreen> {
               ),
             ),
           DropdownButtonFormField<String>(
+            initialValue:
+                _values['correction_mode']?.toString().isNotEmpty == true
+                ? _values['correction_mode'].toString()
+                : 'add',
+            isExpanded: true,
+            decoration: const InputDecoration(labelText: 'نوع المعالجة'),
+            items: const [
+              DropdownMenuItem(value: 'add', child: Text('إضافة بصمة مفقودة')),
+              DropdownMenuItem(
+                value: 'correct',
+                child: Text('تصحيح بصمة خاطئة'),
+              ),
+            ],
+            onSaved: (v) => _values['correction_mode'] = v ?? 'add',
+            onChanged: (v) => setState(() {
+              _values['correction_mode'] = v ?? 'add';
+              _values['original_in_at'] = null;
+              _values['original_out_at'] = null;
+            }),
+          ),
+          if (_values['correction_mode'] == 'correct') ...[
+            const SizedBox(height: 12),
+            TextFormField(
+              key: ValueKey('original_$selectedType'),
+              readOnly: true,
+              controller: TextEditingController(
+                text: _values['original_${selectedType}_at']?.toString() ?? '',
+              ),
+              decoration: const InputDecoration(
+                labelText: 'تاريخ ووقت البصمة الأصلية',
+                suffixIcon: Icon(Icons.edit_calendar),
+              ),
+              validator: (v) => v == null || v.isEmpty
+                  ? 'حدد البصمة الأصلية المراد تصحيحها'
+                  : null,
+              onTap: () async {
+                final now = DateTime.now();
+                final date = await showDatePicker(
+                  context: context,
+                  initialDate: now,
+                  firstDate: DateTime(2000),
+                  lastDate: DateTime(2100),
+                );
+                if (date == null || !mounted) return;
+                final time = await showTimePicker(
+                  context: context,
+                  initialTime: TimeOfDay.now(),
+                );
+                if (time == null || !mounted) return;
+                final value =
+                    '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}:00';
+                setState(() => _values['original_${selectedType}_at'] = value);
+              },
+            ),
+          ],
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Text(
+              'الوقت أدناه هو الوقت الصحيح المطلوب اعتماده. لخروج بعد منتصف الليل اختر تاريخ اليوم التالي. يبقى الوقت الأصلي محفوظاً للمراجعة.',
+            ),
+          ),
+          DropdownButtonFormField<String>(
             initialValue: selectedType,
             decoration: InputDecoration(labelText: '$requestTypeLabel *'),
             isExpanded: true,

@@ -346,6 +346,35 @@ class _HrScreenState extends State<HrScreen> {
                             : Colors.orange,
                       ),
                       title: Text(m['checked_at'].toString()),
+                      subtitle: m['source'] == 'request'
+                          ? Text(
+                              m['correction_details']?.toString() ??
+                                  'وقت معتمد بطلب نسيان بصمة',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            )
+                          : null,
+                      isThreeLine: m['source'] == 'request',
+                      onTap: m['source'] == 'request'
+                          ? () => showDialog<void>(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: const Text('تفاصيل تصحيح البصمة'),
+                                content: SingleChildScrollView(
+                                  child: SelectableText(
+                                    m['correction_details']?.toString() ??
+                                        'وقت معتمد بطلب نسيان بصمة',
+                                  ),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    child: const Text('إغلاق'),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : null,
                     );
                   }),
                   const SizedBox(height: 16),

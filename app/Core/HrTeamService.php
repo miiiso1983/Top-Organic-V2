@@ -255,7 +255,7 @@ final class HrTeamService
                 if($action==='photo_loading')$fields[]=$f('images','الصور (حتى 5 صور، 5MB للصورة)','images');
                 break;
             case 'hr_leave':$fields=[$f('leave_type','نوع الإجازة','select',['annual'=>'سنوية','unpaid'=>'بدون راتب','sick'=>'مرضية','emergency'=>'طارئة']),$f('date_from','من','date'),$f('date_to','إلى','date'),$reason];break;
-            case 'hr_missing_attendance':$fields=[$f('request_type','البصمة','select',['in'=>'دخول','out'=>'خروج','both'=>'دخول وخروج']),$f('clock_in_at','وقت الدخول','datetime-local'),$f('clock_out_at','وقت الخروج','datetime-local'),$reason];$fields[1]['required']=false;$fields[2]['required']=false;break;
+            case 'hr_missing_attendance':$fields=[$f('request_type','البصمة','select',['in'=>'دخول','out'=>'خروج','both'=>'دخول وخروج']),$f('clock_in_at','وقت الدخول','datetime-local'),$f('clock_out_at','وقت الخروج','datetime-local'),$reason];$fields[1]['required']=false;$fields[2]['required']=false;foreach([['correction_mode','نوع المعالجة','select',['add'=>'إضافة بصمة مفقودة','correct'=>'تصحيح بصمة خاطئة']],['original_in_at','الدخول الأصلي عند التصحيح','datetime-local',[]],['original_out_at','الخروج الأصلي عند التصحيح','datetime-local',[]]] as [$name,$label,$type,$options]){$field=$f($name,$label,$type,$options);$field['required']=false;$fields[]=$field;}break;
             case 'deduction_request':$fields=[$f('deduction_amount','مبلغ الخصم','number'),$reason];break;
             case 'hr_overtime':$fields=[$f('request_date','تاريخ العمل','date'),$f('hours','عدد الساعات','number'),$reason];break;
             case 'suspension_request':
@@ -357,7 +357,7 @@ final class HrTeamService
             'deductions'=>['hr_adjustments','id,adjustment_type,amount,period,reason,status','الخصومات والتسويات'],
             'payroll'=>['payrolls','id,period,base_salary,total_earnings,total_deductions,net_salary,status','كشوف الرواتب'],
             'leaves'=>['leave_requests','id,leave_type,date_from,date_to,reason,status','الإجازات'],
-            'attendance'=>['attendance','id,check_type,checked_at','الحضور والانصراف'],
+            'attendance'=>['attendance','id,check_type,checked_at,source','الحضور والانصراف'],
             'advances'=>['salary_advances','id,advance_type,amount,remaining_amount,status','السلف'],
             'evaluations'=>['evaluations','id,period,total_score,evaluation_type','التقييمات'],
             'tips'=>['employee_monthly_tips','id,period,full_amount,prorated_amount,notes','التيبس'],
@@ -368,6 +368,7 @@ final class HrTeamService
         if(!$this->manage($e)&&(int)$e['user_id']!==$this->uid&&!in_array($type,['deductions','payroll','advances','tips','loadings'],true))throw new \RuntimeException('ليس لديك صلاحية هذا الأرشيف',403);
         [$table,$columns,$label]=$types[$type];$page=max(1,(int)($q['page']??1));$size=self::pageSize($q);
         $rows=Database::query("SELECT $columns FROM $table WHERE employee_id=? ORDER BY id DESC LIMIT ? OFFSET ?",[$eid,$size,($page-1)*$size])->fetchAll();
+        if($type==='attendance'){ $rows=AttendanceCorrectionService::annotate($rows); foreach($rows as &$row){unset($row['corrections']);$row['source']=$row['source']==='request'?'طلب معتمد':$row['source'];} unset($row); }
         $total=(int)Database::query("SELECT COUNT(*) FROM $table WHERE employee_id=?",[$eid])->fetchColumn();
         return ['rows'=>$rows,'total'=>$total,'page'=>$page,'page_size'=>$size,'title'=>$label];
     }
