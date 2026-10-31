@@ -55,6 +55,26 @@ class AttendanceCorrectionService
         }
         if(!$plan)throw new \RuntimeException('نوع البصمة غير صالح');
         if(isset($plan['in'],$plan['out'])&&$plan['out']['corrected_at']<=$plan['in']['corrected_at'])throw new \RuntimeException('وقت الخروج يجب أن يكون بعد الدخول؛ حدد تاريخ اليوم التالي للمناوبة الليلية');
+        return self::bindShiftWindows($employeeId,$plan,$data);
+    }
+
+    private static function bindShiftWindows(int $employeeId,array $plan,array $data): array
+    {
+        $times=array_column($plan,'corrected_at');sort($times);
+        $from=date('Y-m-d',strtotime($times[0].' -2 days'));$to=date('Y-m-d',strtotime(end($times).' +2 days'));
+        $shift=HrService::loadShiftMap([$employeeId],$from,$to)[$employeeId]??null;
+        if(AttendanceShiftPolicy::isFlexible($shift))return $plan;
+        $date=trim((string)($data['shift_date']??''));
+        if($date!=='' && self::timestamp($date.' 00:00:00')!==$date.' 00:00:00')throw new \RuntimeException('تاريخ بداية الوردية غير صالح');
+        foreach($plan as $kind=>&$change){
+            $record=['check_type'=>$kind,'checked_at'=>$change['corrected_at'],'source'=>'request'];
+            $w=AttendanceShiftPolicy::locate($record,$shift,$date?:null);
+            if(!$w)throw new \RuntimeException('يجب تحديد وردية صحيحة للموظف قبل اعتماد تصحيح البصمة');
+            if(!AttendanceShiftPolicy::approvedTimeFits($record,$w,$shift))throw new \RuntimeException('وقت البصمة خارج الوردية المحددة أو يتداخل مع الوردية التالية؛ راجع تاريخ بداية الوردية');
+            unset($w['rank'],$w['distance'],$w['eligible']);
+            $change['shift_window']=$w;$change['shift_date']=$date;
+        }unset($change);
+        if(isset($plan['in'],$plan['out']) && ($plan['in']['shift_window']['key']!==$plan['out']['shift_window']['key'] || strtotime($plan['out']['corrected_at'])-strtotime($plan['in']['corrected_at'])>=86400))throw new \RuntimeException('يجب أن يخص الدخول والخروج الوردية نفسها');
         return $plan;
     }
 
@@ -88,9 +108,10 @@ class AttendanceCorrectionService
         if($req['status']==='fully_approved')throw new \RuntimeException('لا يمكن تعديل تصحيح معتمد');
         $values=[];foreach(['clock_in_at','clock_out_at'] as $key)$values[$key]=!empty($payload[$key])?self::timestamp($payload[$key]):null;
         $saved=Database::query('SELECT plan_json FROM attendance_correction_plans WHERE request_id=?',[$id])->fetch();
-        $refresh=!$saved || $req['request_type']!==($payload['request_type']??'in') || $req['clock_in_at']!==$values['clock_in_at'] || $req['clock_out_at']!==$values['clock_out_at'];
+        $refresh=$request['status']==='returned_for_edit' || !$saved || $req['request_type']!==($payload['request_type']??'in') || $req['clock_in_at']!==$values['clock_in_at'] || $req['clock_out_at']!==$values['clock_out_at'];
         $oldPlan=$saved?(json_decode($saved['plan_json'],true)?:[]):[];
         foreach($oldPlan as $kind=>$change){
+            if(trim((string)($payload['shift_date']??''))!==($change['shift_date']??''))$refresh=true;
             if(!empty($payload['correction_mode']) && $payload['correction_mode']!==($change['mode']??'auto'))$refresh=true;
             if(!empty($payload['original_'.$kind.'_at']) && substr(self::timestamp($payload['original_'.$kind.'_at']),0,16)!==substr($change['original_at']??'',0,16))$refresh=true;
         }
@@ -110,6 +131,17 @@ class AttendanceCorrectionService
             Database::query('SELECT id FROM employees WHERE id=? FOR UPDATE',[$eid])->fetch();
             if(!$saved){self::remember($requestId,$eid,self::prepare($eid,$req));$saved=Database::query('SELECT * FROM attendance_correction_plans WHERE request_id=?',[$requestId])->fetch();}
             $plan=json_decode($saved['plan_json'],true);$result=[];$dates=[];
+            if(!isset(reset($plan)['shift_window'])){
+                $plan=self::bindShiftWindows($eid,$plan,$req);
+                self::remember($requestId,$eid,$plan);
+            }
+            foreach($plan as $change){
+                if(empty($change['shift_window']))continue;
+                $w=$change['shift_window'];
+                $current=HrService::loadShiftMap([$eid],$w['work_date'],$w['work_date'])[$eid]??null;
+                $matches=array_filter(AttendanceShiftPolicy::windows($current,$w['work_date']),fn($now)=>$now['key']===$w['key'] && $now['start']===$w['start'] && $now['end']===$w['end']);
+                if(!$matches)throw new \RuntimeException('تغيرت وردية الموظف منذ تقديم الطلب؛ أعد الطلب للتعديل والمراجعة');
+            }
             self::validateOrder($eid,$plan);
             foreach($plan as $kind=>$change){
                 $at=$change['corrected_at'];$id=(int)($change['target_id']??0);

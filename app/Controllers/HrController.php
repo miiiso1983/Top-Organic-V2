@@ -7602,17 +7602,17 @@ class HrController extends Controller
             foreach ($r['sources'] as $s) {
                 $sourceText[] = $sourceLabels[$s] ?? $s;
             }
-            $corrections = [];
+            $corrections = $r['attendance_notes'] ?? [];
             $inText = [];
             $outText = [];
             foreach ($r['pairs'] as $p) {
                 foreach(['in_record','out_record'] as $key)if(!empty($p[$key]['correction_details']))$corrections[]=$p[$key]['correction_details'];
-                $inText[] = $p['in'] === '-' ? 'غير مسجل' : $p['in'];
-                $outText[] = $p['out'] === '-' ? 'غير مسجل' : $p['out'];
+                $inText[] = $p['in'];
+                $outText[] = $p['out'];
             }
             if (!$inText) {
-                $inText[] = 'غير مسجل';
-                $outText[] = 'غير مسجل';
+                $inText[] = '-';
+                $outText[] = '-';
             }
             $rows[] = [
                 $r['full_name'],

@@ -44,17 +44,17 @@ $attQueryPdf = $attQuery ? $attQuery . '&format=pdf' : 'format=pdf';
         foreach ($r['sources'] as $s) {
             $sourceText[] = $sourceLabels[$s] ?? $s;
         }
-        $corrections = [];
+        $corrections = $r['attendance_notes'] ?? [];
         $inLines = [];
         $outLines = [];
         foreach ($r['pairs'] as $p) {
             foreach(['in_record','out_record'] as $key)if(!empty($p[$key]['correction_details']))$corrections[]=$p[$key]['correction_details'];
-            $inLines[] = Helpers::e($p['in'] === '-' ? 'غير مسجل' : $p['in']);
-            $outLines[] = Helpers::e($p['out'] === '-' ? 'غير مسجل' : $p['out']);
+            $inLines[] = Helpers::e($p['in']);
+            $outLines[] = Helpers::e($p['out']);
         }
         if (!$inLines) {
-            $inLines[] = 'غير مسجل';
-            $outLines[] = 'غير مسجل';
+            $inLines[] = '-';
+            $outLines[] = '-';
         }
     ?>
     <tr>

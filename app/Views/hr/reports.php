@@ -62,14 +62,14 @@ $isMatrix = $type === 'attendance_matrix';
     <div class="form-row rpt-generic"><label><?= $isMatrix ? 'حالة الموظف' : 'الحالة' ?></label>
     <?php if ($isMatrix): ?><select name="status"><option value="">كل الحالات</option><?php foreach (['active'=>'نشط','vacation'=>'إجازة','suspended'=>'موقوف','terminated'=>'منتهي الخدمة','resigned'=>'مستقيل'] as $value=>$label): ?><option value="<?= $value ?>" <?= $f['status'] === $value ? 'selected' : '' ?>><?= $label ?></option><?php endforeach; ?></select>
     <?php else: ?><input type="text" name="status" value="<?= Helpers::e($f['status']) ?>" placeholder="approved/pending..."><?php endif; ?></div>
-    <?php if($type==='attendance'): ?><div class="form-row"><label>حالة سجل الحضور</label><select name="attendance_status"><option value="">الكل</option><?php foreach(['حضور مكتمل','حضور مصحح','بصمة ناقصة'] as $state): ?><option value="<?= Helpers::e($state) ?>" <?= ($f['attendance_status']??'')===$state?'selected':'' ?>><?= Helpers::e($state) ?></option><?php endforeach; ?></select></div><?php endif; ?>
+    <?php if($type==='attendance'): ?><div class="form-row"><label>حالة سجل الحضور</label><select name="attendance_status"><option value="">الكل</option><?php foreach(['حضور مكتمل','حضور مصحح','نسيان بصمة خروج','بانتظار الخروج','بصمة ناقصة','وردية غير محددة'] as $state): ?><option value="<?= Helpers::e($state) ?>" <?= ($f['attendance_status']??'')===$state?'selected':'' ?>><?= Helpers::e($state) ?></option><?php endforeach; ?></select></div><?php endif; ?>
     <button class="btn">عرض</button>
   </form>
 </div>
 
 <?php if (!empty($report['summary'])): ?><div class="card" style="display:flex;gap:20px;flex-wrap:wrap">
 <?php foreach($report['summary'] as $label=>$count): ?><span><?= Helpers::e($label) ?>: <strong><?= (int)$count ?></strong></span><?php endforeach; ?>
-<p>الساعات محسوبة من الأوقات المعتمدة. «بصمة ناقصة» تحتاج مراجعة ولا تعني غياباً مؤكداً. التصحيحات القديمة لا يتوفر لها وقت أصلي محفوظ.</p>
+<p>الخروج للدوام الثابت يُربط بالوردية نفسها حتى ٣٠ دقيقة بعد نهايتها. بعد المهلة يظهر «-» حتى اعتماد طلب نسيان البصمة. الساعات غير المكتملة تظهر «-». الدوام المرن يبقى بنظامه الحالي. «بصمة ناقصة» تحتاج مراجعة ولا تعني غياباً مؤكداً. التصحيحات القديمة لا يتوفر لها وقت أصلي محفوظ.</p>
 </div><?php endif; ?>
 <?php if ($type==='fingerprint_forgiveness'): ?><div class="card">فلتر الفترة يخص تاريخ البصمة المطلوب تصحيحها، ويظهر تاريخ تقديم الطلب في عمود مستقل.</div><?php endif; ?>
 <?php if ($isMatrix): ?>

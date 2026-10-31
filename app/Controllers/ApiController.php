@@ -1240,6 +1240,7 @@ class ApiController extends Controller
         }
 
         $payload = [
+            'shift_date' => $b['shift_date'] ?? null,
             'correction_mode' => (string)($b['correction_mode'] ?? 'auto'),
             'original_in_at' => $b['original_in_at'] ?? null,
             'original_out_at' => $b['original_out_at'] ?? null,
@@ -1254,6 +1255,7 @@ class ApiController extends Controller
             $wfRequestId = HrWorkflowService::request('missing_attendance_request', $requestId, (int)$user['id'], [
                 'employee_id' => (int)$emp['id'],
                 'employee_name' => $emp['full_name'] ?? '',
+                'shift_date' => $payload['shift_date'],
                 'correction_mode' => $payload['correction_mode'],
                 'original_in_at' => $payload['original_in_at'],
                 'original_out_at' => $payload['original_out_at'],
@@ -2109,6 +2111,7 @@ class ApiController extends Controller
         }
         $b = $this->body();
         $payload = [
+            'shift_date' => $b['shift_date'] ?? null,
             'correction_mode' => (string)($b['correction_mode'] ?? 'auto'),
             'original_in_at' => $b['original_in_at'] ?? null,
             'original_out_at' => $b['original_out_at'] ?? null,
@@ -2122,6 +2125,7 @@ class ApiController extends Controller
             $wfRequestId = HrWorkflowService::request('missing_attendance_request', $requestId, (int)$user['id'], [
                 'employee_id' => $employeeId,
                 'employee_name' => $emp['full_name'] ?? '',
+                'shift_date' => $payload['shift_date'],
                 'correction_mode' => $payload['correction_mode'],
                 'original_in_at' => $payload['original_in_at'],
                 'original_out_at' => $payload['original_out_at'],
@@ -3340,6 +3344,7 @@ class ApiController extends Controller
             }
             try {
                 $maId = HrService::createMissingAttendanceRequest($empId, [
+                    'shift_date' => $data['shift_date'] ?? null,
                     'correction_mode' => (string)($data['correction_mode'] ?? 'auto'),
                     'original_in_at' => $data['original_in_at'] ?? null,
                     'original_out_at' => $data['original_out_at'] ?? null,

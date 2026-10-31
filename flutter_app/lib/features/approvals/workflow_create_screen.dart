@@ -1816,6 +1816,34 @@ class _WorkflowCreateScreenState extends State<WorkflowCreateScreen> {
               _values['original_out_at'] = null;
             }),
           ),
+          ListTile(
+            title: const Text('تاريخ بداية الوردية (اختياري)'),
+            subtitle: Text(
+              _values['shift_date']?.toString() ??
+                  'للوردية الليلية اختر يوم الدخول',
+            ),
+            trailing: const Icon(Icons.calendar_today),
+            onTap: () async {
+              final d = await showDatePicker(
+                context: context,
+                initialDate:
+                    DateTime.tryParse(
+                      _values['shift_date']?.toString() ?? '',
+                    ) ??
+                    DateTime.now(),
+                firstDate: DateTime(2000),
+                lastDate: DateTime(2100),
+              );
+              if (d != null && mounted)
+                setState(
+                  () => _values['shift_date'] =
+                      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}',
+                );
+            },
+          ),
+          const Text(
+            'مهلة خروج الدوام الثابت ٣٠ دقيقة بعد نهاية الوردية؛ بعدها يلزم طلب معتمد.',
+          ),
           if (_values['correction_mode'] == 'correct') ...[
             const SizedBox(height: 12),
             TextFormField(

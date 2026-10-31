@@ -231,6 +231,7 @@ class _HrScreenState extends State<HrScreen> {
     String t(String key) => AppStrings.t(key, lang);
     final emp = _history?['employee'] as Map?;
     final attendance = (_history?['attendance'] as List?) ?? [];
+    final shiftAttendance = (_history?['attendance_shifts'] as List?) ?? [];
     final leaves = (_history?['leaves'] as List?) ?? [];
 
     return RefreshIndicator(
@@ -335,6 +336,37 @@ class _HrScreenState extends State<HrScreen> {
                     t('hr_home_recent_attendance'),
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
+                  if (shiftAttendance.isNotEmpty) ...[
+                    const Text(
+                      'الوردية: مهلة الخروج ٣٠ دقيقة. «-» تعني أن السجل يحتاج إكمالاً أو مراجعة.',
+                    ),
+                    ...shiftAttendance.take(10).map((item) {
+                      final row = item as Map;
+                      return Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${row['date']} — ${row['status']}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(row['shift_name']?.toString() ?? ''),
+                              Text('دخول: ${row['check_in']}'),
+                              Text('خروج: ${row['check_out']}'),
+                              Text('ساعات العمل: ${row['total_hours']}'),
+                              if ((row['notes']?.toString() ?? '').isNotEmpty)
+                                Text(row['notes'].toString()),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+                    const Text('البصمات الأصلية'),
+                  ],
                   ...attendance.take(10).map((a) {
                     final m = a as Map;
                     return ListTile(

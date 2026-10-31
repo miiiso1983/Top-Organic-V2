@@ -334,8 +334,8 @@ class HrReportService
             $inLines = [];
             $outLines = [];
             foreach ($g['pairs'] as $pair) {
-                $inLines[] = $pair['in'] === '-' ? 'غير مسجل' : $pair['in'];
-                $outLines[] = $pair['out'] === '-' ? 'غير مسجل' : $pair['out'];
+                $inLines[] = $pair['in'];
+                $outLines[] = $pair['out'];
                 $incomplete = $incomplete || $pair['in']==='-' || $pair['out']==='-';
                 foreach(['in','out'] as $kind){
                     $record=$pair[$kind.'_record']??[];
@@ -346,8 +346,8 @@ class HrReportService
                 }
             }
             if (!$inLines) {
-                $inLines[] = 'غير مسجل';
-                $outLines[] = 'غير مسجل';
+                $inLines[] = '-';
+                $outLines[] = '-';
             }
             $rows[] = [
                 'emp_code' => $g['emp_code'],
@@ -357,7 +357,10 @@ class HrReportService
                 'check_in' => implode("\n", $inLines),
                 'check_out' => implode("\n", $outLines),
                 'total_hours' => $g['total_hours'],
-                'attendance_status' => $incomplete ? 'بصمة ناقصة' : ($corrected ? 'حضور مصحح' : 'حضور مكتمل'),
+                'attendance_status' => !empty($g['invalid_shift']) ? 'وردية غير محددة' : ($incomplete ? (!empty($g['missing_exit']) ? 'نسيان بصمة خروج' : (!empty($g['pending_exit']) ? 'بانتظار الخروج' : 'بصمة ناقصة')) : ($corrected ? 'حضور مصحح' : 'حضور مكتمل')),
+                'shift_name'=>$g['shift_name']??'دوام مرن',
+                'exit_deadline'=>implode("\n",$g['exit_deadlines']??[]),
+                'attendance_notes'=>implode("\n",$g['attendance_notes']??[]),
                 'original_in' => implode("\n",$originalIn),
                 'original_out' => implode("\n",$originalOut),
                 'correction_details' => implode("\n",array_unique($details)) ?: '—',
@@ -368,8 +371,8 @@ class HrReportService
         if(!empty($filters['attendance_status']))$rows=array_values(array_filter($rows,fn($row)=>$row['attendance_status']===$filters['attendance_status']));
         return [
             'title' => 'تقرير الحضور والانصراف التفصيلي',
-            'columns' => ['emp_code','full_name','department','work_date','check_in','check_out','total_hours','attendance_status','original_in','original_out','correction_details'],
-            'headers' => ['الكود','الموظف','القسم','التاريخ','وقت الدخول','وقت الخروج','إجمالي وقت الدوام','حالة السجل','الدخول الأصلي','الخروج الأصلي','سجل التصحيح: الطلب / قبل وبعد / المعتمد / تاريخ الاعتماد / السبب'],
+            'columns' => ['emp_code','full_name','department','work_date','check_in','check_out','total_hours','attendance_status','original_in','original_out','correction_details','shift_name','exit_deadline','attendance_notes'],
+            'headers' => ['الكود','الموظف','القسم','التاريخ','وقت الدخول','وقت الخروج','إجمالي وقت الدوام','حالة السجل','الدخول الأصلي','الخروج الأصلي','سجل التصحيح: الطلب / قبل وبعد / المعتمد / تاريخ الاعتماد / السبب','الوردية','نهاية مهلة الخروج','ملاحظات البصمات غير المحتسبة'],
             'rows' => $rows,
             'summary' => $summary,
         ];

@@ -111,38 +111,13 @@ class HrService
 
         $isFlexible = isset($employee['attendance_type']) && $employee['attendance_type'] === 'flexible';
         if (!$isFlexible) {
-            $shift = self::getEmployeeShift($employeeId, $today);
-            $attendance = Database::query("SELECT checked_at FROM attendance WHERE id = ?", [$id])->fetch();
-            if ($attendance && $shift) {
-                $checkedAt = new \DateTime((string)$attendance['checked_at']);
-                // استخدام الفترات المتقطعة إن وجدت، وإلا الفترة الواحدة
-                $segments = $shift['segments'] ?? [];
-                if (empty($segments) && !empty($shift['start_time'])) {
-                    $segments = [['start_time' => $shift['start_time'], 'end_time' => $shift['end_time']]];
-                }
-                if (!empty($segments)) {
-                    // إيجاد أقرب فترة لوقت البصمة
-                    $closestSeg = self::findClosestSegment($segments, $checkedAt, $today);
-                    $segStart = new \DateTime($today . ' ' . $closestSeg['start_time']);
-                    $segEnd = new \DateTime($today . ' ' . $closestSeg['end_time']);
-                    if ($checkType === 'in') {
-                        if ($checkedAt > $segStart) {
-                            $lateMinutes = max(0, (int)floor(($checkedAt->getTimestamp() - $segStart->getTimestamp()) / 60));
-                        }
-                    } else {
-                        if ($checkedAt < $segEnd) {
-                            $earlyMinutes = max(0, (int)floor(($segEnd->getTimestamp() - $checkedAt->getTimestamp()) / 60));
-                        } elseif ($checkedAt > $segEnd) {
-                            $overtimeMinutes = max(0, (int)floor(($checkedAt->getTimestamp() - $segEnd->getTimestamp()) / 60));
-                        }
-                    }
-                }
-            }
+            self::recalculateAttendanceForDate($employeeId,$today);
+            self::recalculateAttendanceForDate($employeeId,date('Y-m-d',strtotime($today.' -1 day')));
+            $metrics=Database::query('SELECT late_minutes,early_minutes,overtime_minutes FROM attendance WHERE id=?',[$id])->fetch();
+            $lateMinutes=(int)($metrics['late_minutes']??0);
+            $earlyMinutes=(int)($metrics['early_minutes']??0);
+            $overtimeMinutes=(int)($metrics['overtime_minutes']??0);
         }
-        Database::query(
-            "UPDATE attendance SET late_minutes = ?, early_minutes = ?, overtime_minutes = ? WHERE id = ?",
-            [$lateMinutes, $earlyMinutes, $overtimeMinutes, $id]
-        );
 
         Helpers::queueSync('attendance', $id, 'insert', [
             'employee_id' => $employeeId, 'check_type' => $checkType,
@@ -575,6 +550,12 @@ class HrService
 
         $created = [];
         foreach ($groups as $g) {
+            $employeeId = (int)$g['employee_id'];
+            if(!empty($g['scheduled'])){
+                $missing=array_values(array_filter($g['pairs'],fn($p)=>$p['out']==='-' && !empty($p['in_record']) && !empty($p['shift_window']) && time()>$p['shift_window']['cutoff']));
+                if(!$missing)continue;
+                $endTime=date('Y-m-d H:i',$missing[0]['shift_window']['end']);
+            }else{
             if ($g['last_out'] !== null || empty($g['first_in'])) {
                 continue;
             }
@@ -590,6 +571,8 @@ class HrService
 
             if ($now < $alertThreshold) {
                 continue;
+            }
+
             }
 
             $exists = Database::query(
@@ -623,7 +606,7 @@ class HrService
     }
 
     /**
-     * تسوية بصمات الخروج المنسية تلقائياً في نهاية اليوم.
+     * تسوية الدوام المرن فقط؛ الدوام الثابت يبقى ناقصاً حتى بصمة فعلية أو طلب معتمد.
      * تُسجّل بصمة خروج بمصدر 'auto' عند وقت انتهاء الوردية (أو وقت افتراضي)،
      * وتُنشئ تنبيه missing_clockout لمراجعة المدير.
      */
@@ -664,6 +647,7 @@ class HrService
                 continue;
             }
             $employeeId = (int)$g['employee_id'];
+            if (!AttendanceShiftPolicy::isFlexible($shiftMap[$employeeId] ?? null)) continue;
             $inRecord = Database::query("SELECT * FROM attendance WHERE id = ?", [(int)$g['first_in_id']])->fetch();
             if (!$inRecord) {
                 continue;
@@ -2061,11 +2045,31 @@ class HrService
         $adjustmentsSql .= " ORDER BY effective_date DESC";
 
         return [
+            'attendance_shifts' => self::employeeShiftHistory($employeeId,$from,$to),
             'attendance' => AttendanceCorrectionService::annotate(Database::query($attendanceSql, array_merge($baseParams, $rangeParams))->fetchAll()),
             'leaves' => Database::query($leavesSql, array_merge($baseParams, $rangeParams))->fetchAll(),
             'advances' => Database::query($advancesSql, array_merge($baseParams, $rangeParams))->fetchAll(),
             'adjustments' => Database::query($adjustmentsSql, array_merge($baseParams, $rangeParams))->fetchAll(),
         ];
+    }
+
+    private static function employeeShiftHistory(int $employeeId,?string $from,?string $to): array
+    {
+        $type=Database::query('SELECT attendance_type FROM employees WHERE id=?',[$employeeId])->fetchColumn();
+        if($type==='flexible')return [];
+        $from=$from??date('Y-m-01');$to=$to??date('Y-m-t');
+        $rangeFrom=date('Y-m-d',strtotime($from.' -1 day'));$rangeTo=date('Y-m-d',strtotime($to.' +1 day'));
+        $rows=Database::query('SELECT id,employee_id,check_type,checked_at,source FROM attendance WHERE employee_id=? AND DATE(checked_at) BETWEEN ? AND ? ORDER BY checked_at,id',[$employeeId,$rangeFrom,$rangeTo])->fetchAll();
+        $map=self::loadShiftMap([$employeeId],$rangeFrom,$rangeTo);$result=[];
+        foreach(self::pairAndGroupAttendance($rows,$map,null,$from,$to) as $g)$result[]=[
+            'date'=>$g['work_date'],'shift_name'=>$g['shift_name']??'',
+            'check_in'=>implode(' / ',array_column($g['pairs'],'in')),
+            'check_out'=>implode(' / ',array_column($g['pairs'],'out')),
+            'total_hours'=>$g['total_hours'],
+            'status'=>!empty($g['invalid_shift'])?'وردية غير محددة':(!empty($g['missing_exit'])?'نسيان بصمة خروج':(!empty($g['pending_exit'])?'بانتظار الخروج':(!empty($g['incomplete'])?'بصمة ناقصة':(in_array('request',$g['sources'],true)?'حضور مصحح':'حضور مكتمل')))),
+            'notes'=>implode("\n",$g['attendance_notes']??[]),
+        ];
+        return array_reverse($result);
     }
 
     /** التحقق من أن ملف الموظف مفتوح */
@@ -3819,6 +3823,7 @@ class HrService
                 $seg=self::findClosestSegment($segments,new \DateTime($anchor['checked_at']),$group['work_date']);
                 $start=new \DateTime($group['work_date'].' '.$seg['start_time']);$end=new \DateTime($group['work_date'].' '.$seg['end_time']);
                 if($end<=$start)$end->modify('+1 day');
+                if(!empty($pair['shift_window'])){$start->setTimestamp($pair['shift_window']['start']);$end->setTimestamp($pair['shift_window']['end']);}
                 foreach(['in','out'] as $kind){
                     $row=$pair[$kind.'_record']??null;if(!$row)continue;
                     $time=strtotime($row['checked_at']);$late=$early=$extra=0;
@@ -3954,6 +3959,19 @@ class HrService
             unset($entry);
         }
 
+        $links = Database::query(
+            "SELECT c.attendance_id,c.employee_id,c.check_type,c.corrected_at,p.plan_json
+             FROM attendance_corrections c JOIN attendance_correction_plans p ON p.request_id=c.request_id
+             WHERE c.employee_id IN ($in) AND c.corrected_at>=? AND c.corrected_at<? ORDER BY c.id",
+            [...$employeeIds,$from.' 00:00:00',date('Y-m-d 00:00:00',strtotime($to.' +1 day'))]
+        )->fetchAll();
+        foreach($links as $link){
+            $plan=json_decode($link['plan_json'],true)?:[];
+            if(!empty($plan[$link['check_type']]['shift_window']))
+                $map[(int)$link['employee_id']]['approved_windows'][(int)$link['attendance_id']]=[
+                    'checked_at'=>$link['corrected_at'],'window'=>$plan[$link['check_type']]['shift_window']];
+        }
+
         return $map;
     }
 
@@ -4085,9 +4103,64 @@ class HrService
         return self::computeWorkDate((string)$record['checked_at'], $startTime);
     }
 
+    private static function groupScheduledAttendance(int $empId,array $records,?array $shift,array $info,array &$groups): void
+    {
+        $buckets=[];
+        foreach($records as $r){
+            $window=AttendanceShiftPolicy::locate($r,$shift);
+            $saved=$shift['approved_windows'][(int)($r['id']??0)]??null;
+            $approved=($r['source']??'')==='request';
+            if($approved && $saved && $saved['checked_at']===$r['checked_at'])$window=$saved['window'];
+            $eligible=$window && ($approved ? AttendanceShiftPolicy::approvedTimeFits($r,$window,$shift) : ($window['eligible']??false));
+            if(($r['source']??'')==='auto')$eligible=false;
+            $date=$window['work_date']??substr($r['checked_at'],0,10);
+            $bucket=$window['key']??$date.'|unassigned';
+            $buckets[$bucket]['date']=$date;$buckets[$bucket]['window']=$window;
+            $buckets[$bucket]['rows'][]=[$r,$eligible];
+        }
+        foreach($buckets as $bucket){
+            $date=$bucket['date'];$window=$bucket['window'];$key=$empId.'|'.$date;
+            if(!isset($groups[$key]))$groups[$key]=self::initAttendanceGroup($empId,$info,$date);
+            $g=&$groups[$key];$open=null;$before=count($g['pairs']);
+            $g['scheduled']=true;
+            $g['shift_name']=$window['name']??'وردية غير محددة أو غير صالحة';
+            if($window)$g['exit_deadlines'][$window['key']]=date('Y-m-d H:i:s',$window['cutoff']);
+            foreach($bucket['rows'] as [$r,$eligible]){
+                if(!$eligible){
+                    $reason=($r['source']??'')==='auto'?'خروج تلقائي سابق غير معتمد':(!$window?'يلزم تحديد وردية صحيحة':($r['check_type']==='out'?'خروج خارج مهلة الوردية':'دخول خارج وقت الوردية'));
+                    $g['attendance_notes'][]=$reason.': '.$r['checked_at'];
+                    $g['excluded_records'][]=$r;
+                    continue;
+                }
+                if($r['check_type']==='in'){
+                    if($open!==null){self::addOrphanAttendanceIn($open,$g,$date);$g['pairs'][array_key_last($g['pairs'])]['shift_window']=$window;$g['incomplete']=true;}
+                    $open=$r;
+                }elseif($r['check_type']==='out'){
+                    if($open!==null && strtotime($r['checked_at'])>strtotime($open['checked_at']) && strtotime($r['checked_at'])-strtotime($open['checked_at'])<86400){
+                        self::addAttendancePair($open,$r,$g,$date,strtotime($r['checked_at'])-strtotime($open['checked_at']));
+                        $g['pairs'][array_key_last($g['pairs'])]['shift_window']=$window;
+                        $open=null;
+                    }else{self::addOrphanAttendanceOut($r,$g,$date);$g['pairs'][array_key_last($g['pairs'])]['shift_window']=$window;$g['incomplete']=true;}
+                }
+            }
+            if($open!==null){
+                self::addOrphanAttendanceIn($open,$g,$date);$g['incomplete']=true;
+                $g['pairs'][array_key_last($g['pairs'])]['shift_window']=$window;
+                $g['pending_exit']=!empty($g['pending_exit']) || time()<=($window['cutoff']??0);
+                $g['missing_exit']=!empty($g['missing_exit']) || time()>($window['cutoff']??0);
+            }
+            if(count($g['pairs'])===$before && !$window){
+                $g['pairs'][]=['in'=>'-','out'=>'-'];$g['incomplete']=true;$g['invalid_shift']=true;
+            }elseif(count($g['pairs'])===$before && !empty($bucket['rows'])){
+                $g['pairs'][]=['in'=>'-','out'=>'-'];$g['incomplete']=true;
+            }
+            unset($g);
+        }
+    }
+
     /**
      * تجميع بصمات الحضور في أيام عمل وتوزيعها على زوج دخول/خروج لكل يوم.
-     * ربط الدخول بالخروج يتم زمنياً قبل التجميع؛ خروج اليوم التالي يتبع يوم عمل الدخول.
+     * الدوام الثابت يُربط داخل فترة الوردية + 30 دقيقة، والخروج التالي لا يكمل وردية سابقة.
      * - الموظف ذو الوردية الثابتة: يوم العمل يُحسب من وقت بدء الوردية.
      * - الموظف المرن: يوم العمل = تاريخ أول دخول في الزوج.
      *
@@ -4129,6 +4202,11 @@ class HrService
 
             $shift = $shiftMap[$empId] ?? null;
             $isFixed = $shift && ($shift['default']['attendance_type'] ?? 'shift') !== 'flexible';
+
+            if (!AttendanceShiftPolicy::isFlexible($shift)) {
+                self::groupScheduledAttendance($empId,$empRecords,$shift,$info,$groups);
+                continue;
+            }
 
             $openIn = null;
             foreach ($empRecords as $r) {
@@ -4198,7 +4276,7 @@ class HrService
             if ($filterTo && $wd > $filterTo) {
                 continue;
             }
-            $g['total_hours'] = self::formatSecondsAsHours($g['total_seconds']);
+            $g['total_hours'] = !empty($g['incomplete']) ? '-' : self::formatSecondsAsHours($g['total_seconds']);
             $g['sources'] = array_keys($g['sources']);
             $result[] = $g;
         }

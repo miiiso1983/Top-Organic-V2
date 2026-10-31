@@ -21,6 +21,7 @@ if($t){
  $fields=json_decode($t['fields_json'],true)?:[];
  $names=array_column($fields,'name');
  $extra=[
+  ['name'=>'shift_date','type'=>'date','label'=>'تاريخ بداية الوردية (اختياري؛ يحدد الوردية الليلية)','required'=>false],
   ['name'=>'correction_mode','type'=>'select','label'=>'نوع المعالجة','required'=>false,'options'=>[['value'=>'add','label'=>'إضافة بصمة مفقودة'],['value'=>'correct','label'=>'تصحيح بصمة خاطئة']]],
   ['name'=>'original_in_at','type'=>'datetime','label'=>'وقت الدخول الأصلي عند التصحيح','required'=>false],
   ['name'=>'original_out_at','type'=>'datetime','label'=>'وقت الخروج الأصلي عند التصحيح','required'=>false],

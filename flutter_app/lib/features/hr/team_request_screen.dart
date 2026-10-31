@@ -27,6 +27,7 @@ class _TeamRequestScreenState extends State<TeamRequestScreen> {
   // حقول طلب نسيان البصمة
   String _attType = 'in';
   String _correctionMode = 'add';
+  DateTime? _shiftDate;
   DateTime? _originalIn;
   DateTime? _originalOut;
   DateTime? _clockIn;
@@ -129,6 +130,7 @@ class _TeamRequestScreenState extends State<TeamRequestScreen> {
         '/team/employees/${widget.employeeId}/missing-attendance',
         data: {
           'request_type': _attType,
+          'shift_date': _shiftDate == null ? null : _fmtDate(_shiftDate!),
           'correction_mode': _correctionMode,
           'original_in_at': _correctionMode == 'correct' && _originalIn != null
               ? _fmtDateTime(_originalIn!)
@@ -214,6 +216,23 @@ class _TeamRequestScreenState extends State<TeamRequestScreen> {
             DropdownMenuItem(value: 'correct', child: Text('تصحيح بصمة خاطئة')),
           ],
           onChanged: (v) => setState(() => _correctionMode = v ?? 'add'),
+        ),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('تاريخ بداية الوردية (اختياري)'),
+          subtitle: Text(
+            _shiftDate == null
+                ? 'للوردية الليلية اختر يوم الدخول'
+                : _fmtDate(_shiftDate!),
+          ),
+          trailing: const Icon(Icons.calendar_today),
+          onTap: () async {
+            final d = await _pickDate(_shiftDate);
+            if (d != null && mounted) setState(() => _shiftDate = d);
+          },
+        ),
+        const Text(
+          'مهلة خروج الدوام الثابت ٣٠ دقيقة بعد نهاية الوردية؛ بعدها يلزم طلب معتمد. الدوام المرن لا يتغير.',
         ),
         if (_correctionMode == 'correct') ...[
           const Text(

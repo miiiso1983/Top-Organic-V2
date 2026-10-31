@@ -74,7 +74,7 @@ namespace {
     for($day=0;$day<7;$day++)seed('shift_work_days',['shift_id'=>1,'day_of_week'=>$day]);
     seed('org_positions',['id'=>1,'employee_id'=>1,'parent_id'=>2,'title'=>'Test staff','is_active'=>1]);
     seed('org_positions',['id'=>2,'employee_id'=>2,'parent_id'=>null,'title'=>'Test manager','is_active'=>1]);
-    $fields=[];foreach(['employee_id','request_type','clock_in_at','clock_out_at','reason','correction_mode','original_in_at','original_out_at'] as $name)$fields[]=['name'=>$name,'type'=>'text','required'=>false];
+    $fields=[];foreach(['employee_id','request_type','clock_in_at','clock_out_at','reason','correction_mode','original_in_at','original_out_at','shift_date'] as $name)$fields[]=['name'=>$name,'type'=>'text','required'=>false];
     seed('approval_templates',['id'=>1,'code'=>'hr_missing_attendance','name'=>'Synthetic missing punch','is_active'=>1,'fields_json'=>json_encode($fields)]);
     seed('template_allowed_roles',['template_id'=>1,'role_id'=>2,'can_create'=>1]);
     seed('approval_steps',['id'=>1,'template_id'=>1,'step_order'=>1,'title'=>'Direct','approver_type'=>'direct_manager','required_count'=>1,'can_return_for_edit'=>1,'is_final'=>1]);
@@ -134,8 +134,7 @@ namespace {
     check((int)Database::query('SELECT late_minutes FROM attendance WHERE id=1')->fetchColumn()===10,'Late minutes not recalculated');
 
     // Both changes are atomic even if the second replacement overlaps another shift.
-    $w=$create(['request_type'=>'both','correction_mode'=>'correct','original_in_at'=>'2026-10-15 20:10:00','original_out_at'=>'2026-10-16 04:00:00','clock_in_at'=>'2026-10-15 20:00:00','clock_out_at'=>'2026-10-16 21:00:00']);
-    rejected(fn()=>WorkflowEngine::decide($w,'approved','',2),'Overlapping shift accepted');
+    rejected(fn()=>$create(['request_type'=>'both','correction_mode'=>'correct','original_in_at'=>'2026-10-15 20:10:00','original_out_at'=>'2026-10-16 04:00:00','clock_in_at'=>'2026-10-15 20:00:00','clock_out_at'=>'2026-10-16 21:00:00']),'Overlapping shift accepted');
     check(Database::query('SELECT checked_at FROM attendance WHERE id=1')->fetchColumn()==='2026-10-15 20:10:00','Partial both-punch update escaped rollback');
     // Dynamic workflow uses the same transactional application boundary.
     seed('workflow_definitions',['id'=>1,'code'=>'test_missing_graph','name'=>'Synthetic graph','request_type'=>'hr_missing_attendance','template_id'=>1,'priority'=>1,'is_active'=>1]);
@@ -154,8 +153,33 @@ namespace {
     Database::query("UPDATE attendance SET checked_at='2026-10-15 20:10:00' WHERE id=1");
     WorkflowEngine::decide($w,'approved','',2);
     check(WorkflowEngine::getRequest($w)['status']==='approved','Graph final correction failed');
+    // A late real exit remains raw evidence; approved correction fills the intended night shift.
+    seed('attendance',['id'=>500,'employee_id'=>1,'check_type'=>'in','checked_at'=>'2026-10-23 20:00:00','source'=>'mobile']);
+    seed('attendance',['id'=>501,'employee_id'=>1,'check_type'=>'out','checked_at'=>'2026-10-24 05:00:00','source'=>'mobile']);
+    $f=['date_from'=>'2026-10-23','date_to'=>'2026-10-23'];
+    $before=App\Core\HrReportService::attendance($f)['rows'][0];
+    check($before['check_out']==='-' && $before['total_hours']==='-' && $before['attendance_status']==='نسيان بصمة خروج','Late exit must not complete shift');
+    $w=$create(['request_type'=>'out','correction_mode'=>'add','shift_date'=>'2026-10-23','clock_out_at'=>'2026-10-24 04:45:00']);
+    WorkflowEngine::decide($w,'approved','',2);
+    $after=App\Core\HrReportService::attendance($f)['rows'][0];
+    check($after['total_hours']==='08:45' && $after['attendance_status']==='حضور مصحح','Approval must replace dash with approved time, even beyond grace');
+    check(Database::query('SELECT checked_at FROM attendance WHERE id=501')->fetchColumn()==='2026-10-24 05:00:00','Late original punch lost');
+    $mobile=HrService::employeeHistory(1,'2026-10')['attendance_shifts'];
+    $mobile=array_values(array_filter($mobile,fn($r)=>$r['date']==='2026-10-23'))[0];
+    check($mobile['status']==='حضور مصحح' && $mobile['total_hours']==='08:45' && str_contains($mobile['check_out'],'04:45'),'Mobile must agree with web');
+    rejected(fn()=>$create(['request_type'=>'out','correction_mode'=>'add','shift_date'=>'2026-10-23','clock_out_at'=>'2026-10-24 20:01:00']),'Explicit correction crossed next shift');
+    // The legacy cron must not fabricate a fixed-shift exit, even if enabled.
+    seed('attendance',['id'=>502,'employee_id'=>1,'check_type'=>'in','checked_at'=>'2026-10-25 20:00:00','source'=>'mobile']);
+    $count=(int)Database::query('SELECT COUNT(*) FROM attendance')->fetchColumn();
+    HrService::autoCloseMissingClockOuts('2026-10-25');
+    check((int)Database::query('SELECT COUNT(*) FROM attendance')->fetchColumn()===$count,'Cron fabricated fixed-shift exit');
+    $pending=$create(['request_type'=>'out','correction_mode'=>'add','shift_date'=>'2026-10-25','clock_out_at'=>'2026-10-26 04:00:00']);
+    Database::query("UPDATE shifts SET end_time='05:00:00' WHERE id=1");
+    rejected(fn()=>WorkflowEngine::decide($pending,'approved','',2),'Changed shift silently approved');
+    check(WorkflowEngine::getRequest($pending)['status']==='pending','Changed schedule consumed approval');
+    Database::query("UPDATE shifts SET end_time='04:00:00' WHERE id=1");
     // Re-running migration retains the audit and is idempotent.
     eval('?>'.$migration);
-    check((int)Database::query('SELECT COUNT(*) FROM attendance_corrections')->fetchColumn()===7,'Audit count changed');
+    check((int)Database::query('SELECT COUNT(*) FROM attendance_corrections')->fetchColumn()===8,'Audit count changed');
     echo "PASS: immutable audit, exact target, overnight 8h and lateness, final approval only, authorization, stale/conflicting decisions rollback, retry, resubmission, both punches, reject, duplicate protection, old clients, report and mobile history.\n";
 }

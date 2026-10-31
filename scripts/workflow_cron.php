@@ -59,7 +59,7 @@ try {
 
 // تنبيهات نسيان بصمة الخروج (بعد انتهاء الوردية + فترة سماح)
 try {
-    $missingClockOuts = HrService::checkMissingClockOuts();
+    $missingClockOuts = array_merge(HrService::checkMissingClockOuts(),HrService::checkMissingClockOuts(date('Y-m-d',strtotime('-1 day'))));
     echo '[' . date('Y-m-d H:i:s') . '] missing clockouts: ' . count($missingClockOuts) . " alerts\n";
 } catch (\Throwable $e) {
     echo '[' . date('Y-m-d H:i:s') . '] missing clockouts check failed: ' . $e->getMessage() . "\n";

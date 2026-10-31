@@ -4,6 +4,7 @@ declare(strict_types=1);
 // Run with: php tests/HrReportDepartmentTest.php (requires pdo_sqlite).
 require __DIR__ . '/../app/Core/Database.php';
 require __DIR__ . '/../app/Core/HrService.php';
+require __DIR__ . '/../app/Core/AttendanceShiftPolicy.php';
 require __DIR__ . '/../app/Core/AttendanceCorrectionService.php';
 require __DIR__ . '/../app/Core/HrReportService.php';
 
@@ -17,6 +18,8 @@ $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
 (new ReflectionProperty(Database::class, 'instance'))->setValue(null, $db);
 $db->exec('CREATE TABLE attendance_corrections (id INTEGER PRIMARY KEY, request_id INTEGER, attendance_id INTEGER, employee_id INTEGER, check_type TEXT, original_at TEXT,corrected_at TEXT,original_source TEXT,approved_by INTEGER,applied_at TEXT)');
 $db->exec('CREATE TABLE missing_attendance_requests (id INTEGER PRIMARY KEY,reason TEXT)');
+$db->exec('CREATE TABLE attendance_correction_plans (request_id INTEGER PRIMARY KEY, plan_json TEXT)');
+$db->exec('CREATE TABLE shift_segments (shift_id INTEGER,start_time TEXT,end_time TEXT,segment_order INTEGER)');
 $db->exec('CREATE TABLE users (id INTEGER PRIMARY KEY,full_name TEXT)');
 $db->exec('CREATE TABLE departments (id INTEGER PRIMARY KEY, name TEXT, is_active INTEGER)');
 $db->exec('CREATE TABLE employees (id INTEGER PRIMARY KEY, emp_code TEXT, full_name TEXT, department TEXT, department_id INTEGER, branch_id INTEGER, shift_id INTEGER, attendance_type TEXT, required_hours REAL)');

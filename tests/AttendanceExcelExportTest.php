@@ -11,13 +11,18 @@ if (($argv[1] ?? '') === '--export') {
     require __DIR__ . '/../app/Core/ExportHelper.php';
     require __DIR__ . '/../app/Core/Controller.php';
     require __DIR__ . '/../app/Controllers/HrController.php';
-    $db->exec("UPDATE attendance SET checked_at='2026-10-15 10:00:00' WHERE employee_id=1 AND check_type='in'");
-    $db->exec("UPDATE attendance SET checked_at='2026-10-16 12:00:00' WHERE employee_id=1 AND check_type='out'");
+    $db->exec("INSERT INTO shifts VALUES (1,'Night','20:00:00','04:00:00'),(2,'Day','08:00:00','16:00:00')");
+    $db->exec("UPDATE employees SET attendance_type='shift',shift_id=1 WHERE id IN (1,3,4)");
+    $db->exec("UPDATE employees SET attendance_type='shift',shift_id=2 WHERE id=2");
+    $db->exec("UPDATE attendance SET checked_at='2026-10-15 20:00:00' WHERE employee_id IN (1,3,4) AND check_type='in'");
+    $db->exec("UPDATE attendance SET checked_at='2026-10-16 04:00:00',source='request' WHERE employee_id=1 AND check_type='out'");
+    $db->exec("UPDATE attendance SET checked_at='2026-10-16 10:00:00' WHERE employee_id=2 AND check_type='out'");
+    $db->exec("UPDATE attendance SET checked_at='2026-10-16 04:30:00' WHERE employee_id=3 AND check_type='out'");
+    $db->exec("UPDATE attendance SET checked_at='2026-10-16 04:30:01' WHERE employee_id=4 AND check_type='out'");
     $db->exec("DELETE FROM attendance WHERE employee_id=5 AND check_type='out'");
     $db->exec("INSERT INTO users VALUES(77,'Synthetic Approver')");
     $db->exec("INSERT INTO missing_attendance_requests VALUES(91,'Synthetic correction')");
-    $db->exec("UPDATE attendance SET source='request' WHERE id=2");
-    $db->exec("INSERT INTO attendance_corrections VALUES(1,91,2,1,'out','2026-10-16 11:00:00','2026-10-16 12:00:00','mobile',77,'2026-10-17 10:00:00')");
+    $db->exec("INSERT INTO attendance_corrections VALUES(1,91,2,1,'out','2026-10-16 03:00:00','2026-10-16 04:00:00','mobile',77,'2026-10-17 10:00:00')");
     $_SESSION = ['role_name' => 'مدير النظام', 'perms' => []];
     $_GET = ['type' => 'attendance', 'period' => '2026-10', 'format' => 'excel'];
     (new App\Controllers\HrController())->exportReports();
@@ -37,7 +42,7 @@ try {
     if (proc_close($process) !== 0) throw new RuntimeException($error);
     $book = PhpOffice\PhpSpreadsheet\IOFactory::load($file);
     $sheet = $book->getActiveSheet();
-    $expected = ['A' => 26, 'B' => 8, 'C' => 8, 'D' => 8, 'E' => 0];
+    $expected = ['A' => 8, 'B' => null, 'C' => 8.5, 'D' => null, 'E' => 0];
     $found = [];
     $total = 0.0;
     for ($row = 1; $row <= $sheet->getHighestDataRow(); $row++) {
@@ -45,6 +50,11 @@ try {
         if (!array_key_exists($code, $expected)) continue;
         $cell = $sheet->getCell('G' . $row);
         $value = $cell->getValue();
+        if($expected[$code]===null){
+            if($value!=='-' || $cell->getDataType()!=='s')throw new RuntimeException('Incomplete shift must export a dash, not zero or 26 hours');
+            if($code==='D' && $sheet->getCell('F'.$row)->getValue()!=='-')throw new RuntimeException('Late exit wrongly included');
+            $found[]=$code;continue;
+        }
         if (!is_numeric($value) || $cell->getDataType() !== 'n' || abs((float)$value * 24 - $expected[$code]) > 0.000001) {
             throw new RuntimeException('Incorrect numeric duration for ' . $code);
         }
@@ -54,16 +64,16 @@ try {
         if ($code === 'A' && !str_contains((string)$sheet->getCell('F' . $row)->getValue(), '2026-10-16')) {
             throw new RuntimeException('Following-day clock-out date is missing');
         }
-        if ($code === 'E' && $sheet->getCell('F' . $row)->getValue() !== 'غير مسجل') {
+        if ($code === 'E' && $sheet->getCell('F' . $row)->getValue() !== '-') {
             throw new RuntimeException('Missing punch must have an explicit label');
         }
-        if($code==='A' && (!str_contains((string)$sheet->getCell('J'.$row)->getValue(),'11:00:00') || !str_contains((string)$sheet->getCell('K'.$row)->getValue(),'طلب #91') || $sheet->getCell('H'.$row)->getValue()!=='حضور مصحح'))throw new RuntimeException('Excel correction provenance missing');
+        if($code==='A' && (!str_contains((string)$sheet->getCell('J'.$row)->getValue(),'03:00:00') || !str_contains((string)$sheet->getCell('K'.$row)->getValue(),'طلب #91') || $sheet->getCell('H'.$row)->getValue()!=='حضور مصحح'))throw new RuntimeException('Excel correction provenance missing');
         $found[] = $code;
         $total += (float)$value * 24;
     }
-    if (count($found) !== 5 || abs($total - 50) > 0.000001) throw new RuntimeException('Incorrect exported row count or sum');
+    if (count($found) !== 6 || abs($total - 16.5) > 0.000001) throw new RuntimeException('Incorrect exported row count or sum');
     $book->disconnectWorksheets();
-    echo "PASS: actual attendance Excel export preserves numeric 26h/8h/0h durations, sums, next-day dates and missing-punch labels.\n";
+    echo "PASS: actual attendance Excel export preserves 8h/8.5h numeric durations, rejects fixed-shift 26h, exports missing/late punches as dashes, includes next-day dates and correction audit.\n";
 } finally {
     unlink($file);
 }
