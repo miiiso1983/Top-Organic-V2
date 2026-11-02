@@ -29,6 +29,9 @@ if (($argv[1] ?? '') === '--export') {
         $db->prepare("INSERT INTO attendance (employee_id,check_type,checked_at,source) VALUES (?,'in',?,'test')")->execute([$id,'2026-10-15 '.$in]);
         $db->prepare("INSERT INTO attendance (employee_id,check_type,checked_at,source) VALUES (?,'out',?,'test')")->execute([$id,'2026-10-16 '.$out]);
     }
+    $db->exec("UPDATE attendance SET checked_at='2026-10-15 20:00:30' WHERE employee_id=3 AND check_type='in'");
+    $db->exec("UPDATE attendance SET checked_at='2026-10-16 04:30:30' WHERE employee_id=3 AND check_type='out'");
+    $db->exec("INSERT INTO attendance (employee_id,check_type,checked_at,source) VALUES (3,'out','2026-10-15 20:00:00','test'),(6,'out','2026-10-15 07:59:00','test')");
     $_SESSION = ['role_name' => 'مدير النظام', 'perms' => []];
     $_GET = ['type' => 'attendance', 'period' => '2026-10', 'format' => 'excel'];
     (new App\Controllers\HrController())->exportReports();
@@ -67,6 +70,7 @@ try {
             throw new RuntimeException('Duration must not wrap at 24 hours');
         }
         if (in_array($code, ['D','G'], true) && ($sheet->getCell('F'.$row)->getValue() === '-' || $sheet->getCell('H'.$row)->getValue() !== 'تجاوز حد احتساب الدوام')) throw new RuntimeException('Overlong shift must retain actual exit and explicit zero-hours status');
+        if (in_array($code,['C','F'],true) && (str_contains((string)$sheet->getCell('E'.$row)->getValue(),'-') || str_contains((string)$sheet->getCell('F'.$row)->getValue(),"\n") || !str_contains((string)$sheet->getCell('N'.$row)->getValue(),'بصمة خروج بلا دخول مقابل'))) throw new RuntimeException('Orphan exits must be moved to notes without hiding valid Excel hours');
         if ($code === 'A' && !str_contains((string)$sheet->getCell('F' . $row)->getValue(), '2026-10-16')) {
             throw new RuntimeException('Following-day clock-out date is missing');
         }

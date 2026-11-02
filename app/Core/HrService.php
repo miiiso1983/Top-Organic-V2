@@ -4156,6 +4156,36 @@ class HrService
         }
     }
 
+    /** Ignore isolated exits only when the same work day has a complete session.
+     * Raw attendance and correction history remain intact; show the ignored evidence in notes.
+     */
+    private static function ignoreUnmatchedReportExits(array &$group): void
+    {
+        $hasComplete = false;
+        foreach ($group['pairs'] as $pair) {
+            if (!empty($pair['in_record']) && !empty($pair['out_record'])
+                && strtotime($pair['out_record']['checked_at']) > strtotime($pair['in_record']['checked_at'])) {
+                $hasComplete = true;
+                break;
+            }
+        }
+        if (!$hasComplete) return;
+        $pairs = [];
+        foreach ($group['pairs'] as $pair) {
+            if (empty($pair['in_record']) && !empty($pair['out_record'])) {
+                $record = $pair['out_record'];
+                $group['ignored_out_records'][] = $record;
+                $group['attendance_notes'][] = 'بصمة خروج بلا دخول مقابل مستبعدة من الحساب: '.$record['checked_at'];
+                if (!empty($record['correction_details'])) $group['attendance_notes'][] = $record['correction_details'];
+                continue;
+            }
+            $pairs[] = $pair;
+        }
+        $group['pairs'] = $pairs;
+        $outs = array_column(array_column($pairs, 'out_record'), 'checked_at');
+        if ($outs) $group['last_out'] = max($outs);
+    }
+
     /** Reporting projection only: retain actual times; zero fixed shifts beyond 6h late, flexible sessions beyond 18h.
      * Operational matching, approval, alerts and payroll keep their existing policy.
      */
@@ -4166,6 +4196,7 @@ class HrService
         $groups = self::pairAndGroupAttendance($records, $shiftMap, $filterDate, $filterFrom, $filterTo, true);
         foreach ($groups as &$g) {
             if (empty($g['scheduled'])) {
+                self::ignoreUnmatchedReportExits($g);
                 // Flexible attendance has no scheduled end: measure each actual session.
                 $over18Hours = false;
                 foreach ($g['pairs'] as $pair) {
@@ -4221,6 +4252,7 @@ class HrService
             // Drop empty placeholders when actual evidence is now shown.
             $actual = array_filter($g['pairs'], fn($p)=>!empty($p['in_record']) || !empty($p['out_record']));
             if ($actual) $g['pairs'] = array_values($actual);
+            self::ignoreUnmatchedReportExits($g);
             $seconds = 0; $lateExit = false; $incomplete = false;
             foreach ($g['pairs'] as $pair) {
                 if (empty($pair['in_record']) || empty($pair['out_record'])) { $incomplete = true; continue; }

@@ -58,4 +58,22 @@ foreach (['01:00:00'=>'17:00','03:00:00'=>'00:00'] as $exit=>$hours) {
 }
 $g=reportGroup([['in','2026-10-15 00:00:00'],['out','2026-10-15 10:00:00'],['in','2026-10-15 12:00:00'],['out','2026-10-15 22:00:00']],$flex)[0];
 ensure($g['total_hours']==='20:00', 'Flexible ceiling applies from each clock-in, not unrelated sessions combined');
+// A stray exit must not hide a complete session (seconds determine the displayed minutes).
+$dayShift=shift('10:00:00','20:00:00');
+foreach ([['10:00:17','10:00:42','18:05:11',29069,'08:04'],['10:01:58','10:02:10','20:52:53',39043,'10:50'],['10:02:45','10:03:07','18:57:35',32068,'08:54']] as [$orphan,$in,$out,$seconds,$hours]) {
+ $events=[['out','2026-10-15 '.$orphan],['in','2026-10-15 '.$in],['out','2026-10-15 '.$out]];
+ foreach ([$dayShift,$flex] as $map) {
+  $g=reportGroup($events,$map)[0];
+  ensure($g['total_hours']===$hours && $g['total_seconds']===$seconds && count($g['pairs'])===1, 'Stray exit no longer suppresses valid hours');
+  ensure(count($g['ignored_out_records'])===1 && str_contains(implode(' ', $g['attendance_notes']),$orphan), 'Ignored exit stays auditable');
+ }
+}
+$g=reportGroup([['out','2026-10-15 10:00:00']],$dayShift)[0];
+ensure($g['total_hours']==='-' && $g['pairs'][0]['out']==='10:00', 'Exit alone cannot manufacture work time');
+$g=reportGroup([['in','2026-10-15 10:00:00'],['out','2026-10-15 12:00:00'],['in','2026-10-15 13:00:00']],$dayShift)[0];
+ensure($g['total_hours']==='-' && count($g['pairs'])===2, 'A genuinely missing exit remains unresolved');
+$g=reportGroup([['out','2026-10-15 10:00:00'],['in','2026-10-15 10:01:00'],['out','2026-10-16 02:00:01']],$dayShift)[0];
+ensure($g['total_hours']==='00:00', 'Ignoring orphan does not bypass fixed six-hour limit');
+$g=reportGroup([['out','2026-10-15 10:00:00'],['in','2026-10-15 10:01:00'],['out','2026-10-16 04:01:01']],$flex)[0];
+ensure($g['total_hours']==='00:00', 'Ignoring orphan does not bypass flexible eighteen-hour limit');
 echo "PASS: report six-hour and 18-hour boundaries, exact boundary, late times, approved precedence, missing punches, flexible parity, split shifts and cross-shift isolation.\n";
