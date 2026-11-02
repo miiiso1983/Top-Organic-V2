@@ -158,15 +158,15 @@ namespace {
     seed('attendance',['id'=>501,'employee_id'=>1,'check_type'=>'out','checked_at'=>'2026-10-24 05:00:00','source'=>'mobile']);
     $f=['date_from'=>'2026-10-23','date_to'=>'2026-10-23'];
     $before=App\Core\HrReportService::attendance($f)['rows'][0];
-    check($before['check_out']==='-' && $before['total_hours']==='-' && $before['attendance_status']==='نسيان بصمة خروج','Late exit must not complete shift');
+    check(str_contains($before['check_out'],'05:00') && $before['total_hours']==='00:00' && $before['attendance_status']==='تجاوز ساعات الوردية','Report must show late exit with zero overlong duration');
     $w=$create(['request_type'=>'out','correction_mode'=>'add','shift_date'=>'2026-10-23','clock_out_at'=>'2026-10-24 04:45:00']);
     WorkflowEngine::decide($w,'approved','',2);
     $after=App\Core\HrReportService::attendance($f)['rows'][0];
-    check($after['total_hours']==='08:45' && $after['attendance_status']==='حضور مصحح','Approval must replace dash with approved time, even beyond grace');
+    check($after['total_hours']==='00:00' && $after['attendance_status']==='تجاوز ساعات الوردية' && str_contains($after['check_out'],'04:45'),'Approved time must be visible but overlong report duration is zero');
     check(Database::query('SELECT checked_at FROM attendance WHERE id=501')->fetchColumn()==='2026-10-24 05:00:00','Late original punch lost');
     $mobile=HrService::employeeHistory(1,'2026-10')['attendance_shifts'];
     $mobile=array_values(array_filter($mobile,fn($r)=>$r['date']==='2026-10-23'))[0];
-    check($mobile['status']==='حضور مصحح' && $mobile['total_hours']==='08:45' && str_contains($mobile['check_out'],'04:45'),'Mobile must agree with web');
+    check($mobile['status']==='تجاوز ساعات الوردية' && $mobile['total_hours']==='00:00' && str_contains($mobile['check_out'],'04:45'),'Mobile must agree with web');
     rejected(fn()=>$create(['request_type'=>'out','correction_mode'=>'add','shift_date'=>'2026-10-23','clock_out_at'=>'2026-10-24 20:01:00']),'Explicit correction crossed next shift');
     // The legacy cron must not fabricate a fixed-shift exit, even if enabled.
     seed('attendance',['id'=>502,'employee_id'=>1,'check_type'=>'in','checked_at'=>'2026-10-25 20:00:00','source'=>'mobile']);

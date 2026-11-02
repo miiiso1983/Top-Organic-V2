@@ -42,7 +42,7 @@ try {
     if (proc_close($process) !== 0) throw new RuntimeException($error);
     $book = PhpOffice\PhpSpreadsheet\IOFactory::load($file);
     $sheet = $book->getActiveSheet();
-    $expected = ['A' => 8, 'B' => null, 'C' => 8.5, 'D' => null, 'E' => 0];
+    $expected = ['A' => 8, 'B' => null, 'C' => 0, 'D' => 0, 'E' => 0];
     $found = [];
     $total = 0.0;
     for ($row = 1; $row <= $sheet->getHighestDataRow(); $row++) {
@@ -52,7 +52,6 @@ try {
         $value = $cell->getValue();
         if($expected[$code]===null){
             if($value!=='-' || $cell->getDataType()!=='s')throw new RuntimeException('Incomplete shift must export a dash, not zero or 26 hours');
-            if($code==='D' && $sheet->getCell('F'.$row)->getValue()!=='-')throw new RuntimeException('Late exit wrongly included');
             $found[]=$code;continue;
         }
         if (!is_numeric($value) || $cell->getDataType() !== 'n' || abs((float)$value * 24 - $expected[$code]) > 0.000001) {
@@ -61,6 +60,7 @@ try {
         if ($cell->getStyle()->getNumberFormat()->getFormatCode() !== '[h]:mm') {
             throw new RuntimeException('Duration must not wrap at 24 hours');
         }
+        if (in_array($code, ['C','D'], true) && (!str_contains((string)$sheet->getCell('F'.$row)->getValue(), '04:30') || $sheet->getCell('H'.$row)->getValue() !== 'تجاوز ساعات الوردية')) throw new RuntimeException('Overlong shift must retain actual exit and explicit zero-hours status');
         if ($code === 'A' && !str_contains((string)$sheet->getCell('F' . $row)->getValue(), '2026-10-16')) {
             throw new RuntimeException('Following-day clock-out date is missing');
         }
@@ -71,9 +71,9 @@ try {
         $found[] = $code;
         $total += (float)$value * 24;
     }
-    if (count($found) !== 6 || abs($total - 16.5) > 0.000001) throw new RuntimeException('Incorrect exported row count or sum');
+    if (count($found) !== 6 || abs($total - 8) > 0.000001) throw new RuntimeException('Incorrect exported row count or sum');
     $book->disconnectWorksheets();
-    echo "PASS: actual attendance Excel export preserves 8h/8.5h numeric durations, rejects fixed-shift 26h, exports missing/late punches as dashes, includes next-day dates and correction audit.\n";
+    echo "PASS: actual attendance Excel export preserves 8h and numeric zero for overlong shifts, retains late exit times, rejects cross-shift 26h pairing, includes next-day dates and correction audit.\n";
 } finally {
     unlink($file);
 }

@@ -1273,7 +1273,7 @@ class HrController extends Controller
         $raw = \App\Core\AttendanceCorrectionService::annotate($raw);
         $employeeIds = array_unique(array_map(fn ($r) => (int)$r['employee_id'], $raw));
         $shiftMap = HrService::loadShiftMap($employeeIds, $from, $to);
-        return HrService::pairAndGroupAttendance($raw, $shiftMap, $date);
+        return HrService::attendanceReportGroups($raw, $shiftMap, $date);
     }
 
     public function attendanceAlerts(): void

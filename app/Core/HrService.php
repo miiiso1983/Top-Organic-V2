@@ -2061,12 +2061,12 @@ class HrService
         $rangeFrom=date('Y-m-d',strtotime($from.' -1 day'));$rangeTo=date('Y-m-d',strtotime($to.' +1 day'));
         $rows=Database::query('SELECT id,employee_id,check_type,checked_at,source FROM attendance WHERE employee_id=? AND DATE(checked_at) BETWEEN ? AND ? ORDER BY checked_at,id',[$employeeId,$rangeFrom,$rangeTo])->fetchAll();
         $map=self::loadShiftMap([$employeeId],$rangeFrom,$rangeTo);$result=[];
-        foreach(self::pairAndGroupAttendance($rows,$map,null,$from,$to) as $g)$result[]=[
+        foreach(self::attendanceReportGroups($rows,$map,null,$from,$to) as $g)$result[]=[
             'date'=>$g['work_date'],'shift_name'=>$g['shift_name']??'',
             'check_in'=>implode(' / ',array_column($g['pairs'],'in')),
             'check_out'=>implode(' / ',array_column($g['pairs'],'out')),
             'total_hours'=>$g['total_hours'],
-            'status'=>!empty($g['invalid_shift'])?'وردية غير محددة':(!empty($g['missing_exit'])?'نسيان بصمة خروج':(!empty($g['pending_exit'])?'بانتظار الخروج':(!empty($g['incomplete'])?'بصمة ناقصة':(in_array('request',$g['sources'],true)?'حضور مصحح':'حضور مكتمل')))),
+            'status'=>!empty($g['exceeds_shift'])?'تجاوز ساعات الوردية':(!empty($g['invalid_shift'])?'وردية غير محددة':(!empty($g['missing_exit'])?'نسيان بصمة خروج':(!empty($g['pending_exit'])?'بانتظار الخروج':(!empty($g['incomplete'])?'بصمة ناقصة':(in_array('request',$g['sources'],true)?'حضور مصحح':'حضور مكتمل'))))),
             'notes'=>implode("\n",$g['attendance_notes']??[]),
         ];
         return array_reverse($result);
@@ -4156,6 +4156,78 @@ class HrService
             }
             unset($g);
         }
+    }
+
+    /** Reporting projection only: retain actual times and zero overlong fixed shifts.
+     * Operational matching, approval, alerts and payroll keep their existing policy.
+     */
+    public static function attendanceReportGroups(
+        array $records, array $shiftMap, ?string $filterDate = null,
+        string $filterFrom = '', string $filterTo = ''
+    ): array {
+        $groups = self::pairAndGroupAttendance($records, $shiftMap, $filterDate, $filterFrom, $filterTo);
+        foreach ($groups as &$g) {
+            if (empty($g['scheduled'])) continue;
+            $shift = $shiftMap[$g['employee_id']] ?? null;
+            // A real late exit may be displayed against its own orphan entry only.
+            // Approved pairs take precedence; never consume a following shift's exit.
+            foreach ($g['excluded_records'] ?? [] as $record) {
+                if (($record['source'] ?? '') === 'auto') continue;
+                $window = AttendanceShiftPolicy::locate($record, $shift);
+                $attached = false;
+                if ($record['check_type'] === 'out' && $window
+                    && AttendanceShiftPolicy::approvedTimeFits($record, $window, $shift)) {
+                    foreach (array_reverse(array_keys($g['pairs'])) as $pairIndex) {
+                        $pair = &$g['pairs'][$pairIndex];
+                        if (($pair['shift_window']['key'] ?? null) !== $window['key']
+                            || empty($pair['in_record']) || !empty($pair['out_record'])
+                            || strtotime($record['checked_at']) <= strtotime($pair['in_record']['checked_at'])) continue;
+                        $pair['out_record'] = $record;
+                        $pair['out'] = self::formatAttendanceTime($record['checked_at'], $g['work_date']);
+                        $g['sources'][] = $record['source'] ?? '';
+                        $attached = true;
+                        break;
+                    }
+                    unset($pair);
+                }
+                if (!$attached) {
+                    // Preserve unmatched evidence in separate lines, without inventing a pair.
+                    // Extra punches after a completed/approved pair remain in the audit notes.
+                    $hasCompleteWindow = false;
+                    foreach ($g['pairs'] as $pair) {
+                        if ($window && ($pair['shift_window']['key'] ?? null) === $window['key']
+                            && !empty($pair['in_record']) && !empty($pair['out_record'])) $hasCompleteWindow = true;
+                    }
+                    if (!$hasCompleteWindow) {
+                        $kind = $record['check_type'];
+                        $g['pairs'][] = ['in'=>'-', 'out'=>'-', $kind=>self::formatAttendanceTime($record['checked_at'], $g['work_date']),
+                            $kind.'_record'=>$record, 'shift_window'=>$window];
+                    }
+                }
+            }
+            // Drop empty placeholders when actual evidence is now shown.
+            $actual = array_filter($g['pairs'], fn($p)=>!empty($p['in_record']) || !empty($p['out_record']));
+            if ($actual) $g['pairs'] = array_values($actual);
+            $seconds = 0; $windowSeconds = []; $exceeds = false; $incomplete = false;
+            foreach ($g['pairs'] as $pair) {
+                if (empty($pair['in_record']) || empty($pair['out_record'])) { $incomplete = true; continue; }
+                $duration = strtotime($pair['out_record']['checked_at']) - strtotime($pair['in_record']['checked_at']);
+                $window = $pair['shift_window'] ?? null;
+                if (!$window || $duration <= 0) { $incomplete = true; continue; }
+                $seconds += $duration;
+                $windowSeconds[$window['key']] = ($windowSeconds[$window['key']] ?? 0) + $duration;
+                if ($windowSeconds[$window['key']] > $window['end'] - $window['start']) $exceeds = true;
+            }
+            $g['exceeds_shift'] = $exceeds;
+            $g['incomplete'] = $incomplete;
+            if (!$incomplete) { $g['missing_exit'] = false; $g['pending_exit'] = false; }
+            $g['total_seconds'] = $exceeds ? 0 : $seconds;
+            $g['total_hours'] = $exceeds ? '00:00' : ($incomplete ? '-' : self::formatSecondsAsHours($seconds));
+            if ($exceeds) $g['attendance_notes'][] = 'ساعات الدوام صفر: المدة المسجلة أكبر من ساعات الوردية؛ أوقات البصمات محفوظة للمراجعة.';
+            $g['sources'] = array_values(array_unique($g['sources']));
+        }
+        unset($g);
+        return $groups;
     }
 
     /**
