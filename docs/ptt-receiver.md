@@ -51,3 +51,11 @@ The enabled session is stored in a dedicated Keychain item with `AfterFirstUnloc
 At deployment, Firebase and LiveKit were configured; PTT-specific APNs credentials were absent. Background iOS reception is therefore not operational until Apple setup and a signed client update are completed.
 
 References: [Apple PushToTalk](https://developer.apple.com/documentation/pushtotalk/creating-a-push-to-talk-app), [Apple framework walkthrough](https://developer.apple.com/videos/play/wwdc2022/10117/), [Android background media playback](https://developer.android.com/media/media3/session/background-playback).
+
+## Store build 63 (2026-11-02)
+
+Android uses `1.3.3+63`. The existing App Store marketing series is numeric (`62` was already live), so the iOS release was built with `--build-name=63 --build-number=63`, resulting in `63.0.0` / `63`. Preserve this iOS version progression in future uploads; do not fall back to the Android marketing version when building iOS.
+
+Xcode regenerated development and App Store distribution profiles with the Push to Talk entitlement. The exported IPA was checked for `com.apple.developer.push-to-talk = true`, `aps-environment = production`, matching bundle identifier and build number. The Android AAB has the same signing certificate and ABI set as store build 62.
+
+The signed iOS build was uploaded to App Store Connect. APNs server configuration and physical-device background reception validation remain separate from successful signing/upload. See the deployment checklist above before enabling background reception for staff.
