@@ -1,6 +1,8 @@
 /* PTT Live — بث Walkie-Talkie مباشر عبر LiveKit */
 (function () {
   'use strict';
+  // Embedded work windows share the parent page's listening session.
+  try { window.PttReceiver = window.PttReceiver || window.parent.PttReceiver; } catch (_) {}
   const cfg = window.PTT_LIVE;
   const LK = (typeof LivekitClient !== 'undefined' ? LivekitClient : (typeof LiveKitClient !== 'undefined' ? LiveKitClient : null));
 
@@ -68,6 +70,7 @@
     });
 
     try {
+      window.PttReceiver?.pause(true);
       await currentRoom.connect(data.url, data.token);
     } catch (e) {
       console.error('[PTT-Live] connect error', e);
@@ -92,6 +95,7 @@
   }
 
   function cleanup() {
+    window.PttReceiver?.pause(false);
     micTrack = null;
     room = null;
     if (holdBtn) holdBtn.style.display = 'none';

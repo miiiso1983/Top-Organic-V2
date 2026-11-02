@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../ptt/ptt_receiver.dart';
 import 'package:flutter/foundation.dart';
 import '../../core/network/api_client.dart';
 import '../../core/storage/auth_storage.dart';
@@ -91,6 +92,7 @@ class AuthProvider extends ChangeNotifier {
             .map((e) => e.toString())
             .toList();
         await _storage.savePermissions(permissions);
+        if (!can('ptt.use')) await PttReceiver.disable();
         notifyListeners();
       }
     } catch (_) {
@@ -141,6 +143,7 @@ class AuthProvider extends ChangeNotifier {
   Future<void> logout() async {
     if (_loggingOut) return;
     _loggingOut = true;
+    await PttReceiver.disable();
     _permissionsTimer?.cancel();
     try {
       await PushNotificationService().unregisterCurrentDevice();

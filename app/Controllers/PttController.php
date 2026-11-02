@@ -9,6 +9,17 @@ use App\Core\Ptt\PttService;
  */
 class PttController extends Controller
 {
+    public function delivery(): void
+    {
+        $after=isset($_GET['after'])?max(0,(int)$_GET['after']):null;
+        Response::json(['ok'=>true,'data'=>\App\Core\Ptt\PttDeliveryService::feed((int)Auth::id(),$after)]);
+    }
+
+    public function audio(string $id): void
+    {
+        \App\Core\Ptt\PttDeliveryService::audio((int)$id,(int)Auth::id());
+    }
+
     // ===== الرئيسية: القنوات + آخر الرسائل الواردة =====
     public function index(): void
     {

@@ -38,7 +38,7 @@
 </div>
 <script>window.PTT_LIVE = { channel: <?= (int)$channel['id'] ?>, publish: <?= $canLivePublish ? 'true' : 'false' ?> };</script>
 <script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.min.js"></script>
-<script src="/assets/js/ptt-live.js?v=8"></script>
+<script src="/assets/js/ptt-live.js?v=9"></script>
 <script>
   // Fallback: إذا لم يُحمّل ptt-live.js، أضف رسالة توضيحية مباشرة
   setTimeout(function(){
@@ -123,4 +123,4 @@
 </div>
 
 <script src="/assets/js/ptt-offline.js?v=1"></script>
-<script src="/assets/js/ptt.js?v=4"></script>
+<script src="/assets/js/ptt.js?v=5"></script>

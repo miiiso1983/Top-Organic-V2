@@ -9,6 +9,32 @@ use App\Core\Workflow\EntityRegistry;
  */
 class ApiController extends Controller
 {
+    public function pttReceiverRegister(): void
+    {
+        try {
+            $input=json_decode(file_get_contents('php://input'),true)?:$_POST;
+            \App\Core\Ptt\PttApnsService::register(ApiAuth::id(),$input);
+            Response::json(['ok'=>true,'background_ready'=>\App\Core\Ptt\PttApnsService::configured()]);
+        }catch(\Throwable $e){Response::json(['ok'=>false,'error'=>$e->getMessage()],422);}
+    }
+    public function pttReceiverRemove(): void
+    {
+        $input=json_decode(file_get_contents('php://input'),true)?:$_POST;
+        \App\Core\Ptt\PttApnsService::unregister(ApiAuth::id(),(string)($input['device_id']??''));
+        Response::json(['ok'=>true]);
+    }
+
+    public function pttDelivery(): void
+    {
+        $after=isset($_GET['after'])?max(0,(int)$_GET['after']):null;
+        Response::json(['ok'=>true,'data'=>\App\Core\Ptt\PttDeliveryService::feed(ApiAuth::id(),$after)]);
+    }
+
+    public function pttAudio(string $id): void
+    {
+        \App\Core\Ptt\PttDeliveryService::audio((int)$id,ApiAuth::id());
+    }
+
     private function body(): array
     {
         $json = json_decode(file_get_contents('php://input'), true);

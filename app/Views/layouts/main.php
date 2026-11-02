@@ -116,6 +116,8 @@ window.reinitSelect2 = function(selector) { window._select2ReinitQueue.push(sele
   </div>
 </div>
 <?php if (!$isEmbeddedWindow && Auth::can('ptt.use')): ?>
+<button type="button" id="ptt-receiver-toggle" class="btn btn-sm" data-user="<?= (int)Auth::id() ?>" aria-pressed="false" style="position:fixed;bottom:24px;left:86px;z-index:998;background:#1b5e20;color:#fff">تشغيل استقبال PTT</button>
+<script src="/assets/js/ptt-receiver.js?v=1" defer></script>
 <a href="/ptt" id="ptt-fab" title="PTT — اتصال صوتي فوري"><i class="fa-solid fa-tower-broadcast"></i></a>
 <style>
 #ptt-fab { position:fixed; bottom:22px; left:22px; z-index:998; width:56px; height:56px; border-radius:50%;

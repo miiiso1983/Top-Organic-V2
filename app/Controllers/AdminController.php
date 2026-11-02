@@ -352,6 +352,10 @@ class AdminController extends Controller
                 'livekit_url' => \App\Core\Settings::get('livekit_url', ''),
                 'livekit_api_key' => \App\Core\Settings::get('livekit_api_key', ''),
                 'livekit_api_secret' => \App\Core\Settings::get('livekit_api_secret', ''),
+                'ptt_apns_team_id' => \App\Core\Settings::get('ptt_apns_team_id',''),
+                'ptt_apns_key_id' => \App\Core\Settings::get('ptt_apns_key_id',''),
+                'ptt_apns_bundle_id' => \App\Core\Settings::get('ptt_apns_bundle_id','com.toporganic.topOrganicApp'),
+                'ptt_apns_ready' => \App\Core\Ptt\PttApnsService::configured(),
                 'vapid_public' => \App\Core\Settings::get('push_vapid_public', ''),
             ],
             'fcmConfigured' => \App\Core\Push\FcmService::isConfigured(),
@@ -363,6 +367,10 @@ class AdminController extends Controller
     {
         foreach (['fcm_service_account_json', 'fcm_server_key', 'livekit_url', 'livekit_api_key', 'livekit_api_secret'] as $k) {
             \App\Core\Settings::set($k, trim((string)$this->input($k, '')));
+        }
+        foreach (['ptt_apns_team_id','ptt_apns_key_id','ptt_apns_bundle_id','ptt_apns_private_key'] as $k) {
+            $value=trim((string)$this->input($k,''));
+            if($value!=='') \App\Core\Settings::set($k,$value);
         }
         // إبطال التوكن المخزن عند تغيير بيانات الاعتماد
         \App\Core\Settings::set('fcm_access_token', '');

@@ -1086,4 +1086,13 @@ foreach (['/hr/team-data'=>'auth','/api/hr-team'=>'api'] as $prefix=>$guard) {
     $router->get($prefix.'/files/{id}/data',[$c,'fileData'],[$guard]);
 }
 
+// Authenticated PTT receivers; permissions and recipient membership are checked on every fetch.
+$router->get('/ptt/delivery', [PttController::class, 'delivery'], ['auth', 'perm:ptt.use']);
+$router->get('/ptt/messages/{id}/audio', [PttController::class, 'audio'], ['auth', 'perm:ptt.use']);
+$router->get('/api/ptt/delivery', [ApiController::class, 'pttDelivery'], ['api', 'perm:ptt.use']);
+$router->get('/api/ptt/messages/{id}/audio', [ApiController::class, 'pttAudio'], ['api', 'perm:ptt.use']);
+
+$router->post('/api/ptt/receiver/register', [ApiController::class, 'pttReceiverRegister'], ['api', 'perm:ptt.use']);
+$router->post('/api/ptt/receiver/remove', [ApiController::class, 'pttReceiverRemove'], ['api']);
+
 return $router;

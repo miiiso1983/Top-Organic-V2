@@ -43,6 +43,14 @@
   <code style="font-size:11px;word-break:break-all;display:block;direction:ltr"><?= Helpers::e($s['vapid_public'] ?: '— لم يُولّد بعد —') ?></code>
 </div>
 
+<div class="card">
+<h3>استقبال PTT في خلفية آيفون</h3>
+<p><?= !empty($s['ptt_apns_ready']) ? 'بيانات إرسال Apple موجودة' : 'يلزم إعداد مفتاح APNs وتفعيل Push to Talk في حساب Apple Developer وملف توقيع التطبيق' ?></p>
+<div class="form-row"><label>Apple Team ID</label><input name="ptt_apns_team_id" value="<?= Helpers::e($s['ptt_apns_team_id']??'') ?>" dir="ltr"></div>
+<div class="form-row"><label>APNs Key ID</label><input name="ptt_apns_key_id" value="<?= Helpers::e($s['ptt_apns_key_id']??'') ?>" dir="ltr"></div>
+<div class="form-row"><label>Bundle ID</label><input name="ptt_apns_bundle_id" value="<?= Helpers::e($s['ptt_apns_bundle_id']??'com.toporganic.topOrganicApp') ?>" dir="ltr"></div>
+<div class="form-row"><label>مفتاح APNs الخاص (.p8) — اتركه فارغاً للاحتفاظ بالمفتاح الحالي</label><textarea name="ptt_apns_private_key" rows="5" dir="ltr" autocomplete="off"></textarea></div>
+</div>
 <button class="btn btn-success btn-lg">حفظ كل الإعدادات</button>
 </form>
 

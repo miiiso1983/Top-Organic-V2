@@ -14,6 +14,8 @@ import '../../core/locale/app_strings.dart';
 import '../../core/network/api_client.dart';
 import '../../shared/utils/timezone_helper.dart';
 import 'ptt_live_manager.dart';
+import 'ptt_receiver.dart';
+import 'package:flutter/services.dart';
 
 class PttScreen extends StatefulWidget {
   const PttScreen({super.key});
@@ -23,6 +25,47 @@ class PttScreen extends StatefulWidget {
 }
 
 class _PttScreenState extends State<PttScreen> {
+  Timer? _receiverTimer;
+  bool _receiving = false, _receiverBusy = false;
+  String _receiverStatus = '';
+
+  Future<void> _refreshReceiver() async {
+    try {
+      final state = await PttReceiver.state();
+      if (mounted)
+        setState(() {
+          _receiving = state['enabled'] == true;
+          _receiverStatus = state['error']?.toString() ?? '';
+          if (_receiverStatus.isEmpty &&
+              (state['speaker']?.toString().isNotEmpty ?? false))
+            _receiverStatus = 'يتحدث الآن: ${state['speaker']}';
+        });
+    } catch (_) {}
+  }
+
+  Future<void> _toggleReceiver(bool value) async {
+    setState(() => _receiverBusy = true);
+    try {
+      if (value) {
+        if (!await Permission.notification.request().isGranted)
+          throw StateError('اسمح بالإشعارات لتشغيل استقبال الخلفية');
+        await PttReceiver.enable();
+      } else {
+        await PttReceiver.disable();
+      }
+      await _refreshReceiver();
+    } catch (e) {
+      if (mounted)
+        setState(
+          () => _receiverStatus = e is PlatformException
+              ? (e.message ?? 'تعذر تفعيل الاستقبال')
+              : e.toString(),
+        );
+    } finally {
+      if (mounted) setState(() => _receiverBusy = false);
+    }
+  }
+
   bool _loading = true,
       _loadingChannel = false,
       _recording = false,
@@ -56,10 +99,17 @@ class _PttScreenState extends State<PttScreen> {
     _liveStatus = t('ptt_live_status_disconnected');
     _liveManager.onConnected = () =>
         _setLiveStatus(t('ptt_live_status_connected'), 1);
-    _liveManager.onDisconnected = () =>
-        _setLiveStatus(t('ptt_live_status_disconnected'), 0);
+    _liveManager.onDisconnected = () {
+      PttReceiver.pause(false);
+      _setLiveStatus(t('ptt_live_status_disconnected'), 0);
+    };
     _liveManager.onParticipantChanged = (c) => _setLiveCount(c);
     _loadPtt();
+    _refreshReceiver();
+    _receiverTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => _refreshReceiver(),
+    );
   }
 
   void _setLiveStatus(String status, int count) {
@@ -78,6 +128,8 @@ class _PttScreenState extends State<PttScreen> {
 
   @override
   void dispose() {
+    _receiverTimer?.cancel();
+    PttReceiver.pause(false);
     _recordTimer?.cancel();
     _recorder?.dispose();
     _player?.dispose();
@@ -158,6 +210,7 @@ class _PttScreenState extends State<PttScreen> {
         url = m['audio_url']?.toString() ?? m['file_path']?.toString();
     if (url == null || url.isEmpty) return;
     final api = context.read<ApiClient>();
+    await PttReceiver.pause(true);
     await _player?.dispose();
     final player = AudioPlayer();
     setState(() {
@@ -165,20 +218,23 @@ class _PttScreenState extends State<PttScreen> {
       _playingId = id;
     });
     player.onPlayerComplete.listen((_) {
+      api.post('/ptt/messages/$id/played').then<void>((_) {}, onError: (_) {});
+      PttReceiver.pause(false);
       if (mounted) setState(() => _playingId = null);
     });
     try {
       await player.play(UrlSource('${AppConfig.baseUrl}$url'));
-      await api.post('/ptt/messages/$id/played');
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = t('ptt_play_error'));
+      await PttReceiver.pause(false);
+      if (mounted) setState(() => _error = t('ptt_play_error'));
     }
   }
 
   Future<void> _startRecord() async {
     if (!_canSend || _uploading) return;
     if (!(await Permission.microphone.request()).isGranted) return;
+    await PttReceiver.pause(true);
     final recorder = AudioRecorder();
     final path = p.join(
       Directory.systemTemp.path,
@@ -197,6 +253,7 @@ class _PttScreenState extends State<PttScreen> {
       });
     } catch (e) {
       await recorder.dispose();
+      await PttReceiver.pause(false);
       if (!mounted) return;
       setState(() => _error = t('ptt_record_start_error'));
     }
@@ -220,6 +277,7 @@ class _PttScreenState extends State<PttScreen> {
         _recordStart = null;
       });
     await recorder.dispose();
+    await PttReceiver.pause(false);
     if (path != null && _selectedChannelId != null) await _upload(path, start);
   }
 
@@ -233,7 +291,7 @@ class _PttScreenState extends State<PttScreen> {
       final formData = FormData.fromMap({
         'channel_id': _selectedChannelId,
         'priority': _priority,
-        'duration_seconds': duration,
+        'duration_sec': duration,
         'audio': await MultipartFile.fromFile(path, filename: 'audio.m4a'),
       });
       await api.post('/ptt/send', data: formData);
@@ -253,7 +311,7 @@ class _PttScreenState extends State<PttScreen> {
 
   Future<void> _joinLive({required bool publish}) async {
     if (_selectedChannelId == null || !_liveConfigured) return;
-    if (!(await Permission.microphone.request()).isGranted) {
+    if (publish && !(await Permission.microphone.request()).isGranted) {
       if (mounted) setState(() => _error = t('ptt_mic_permission_required'));
       return;
     }
@@ -272,6 +330,7 @@ class _PttScreenState extends State<PttScreen> {
       if (url.startsWith('https://'))
         url = url.replaceFirst('https://', 'wss://');
       if (url.startsWith('http://')) url = url.replaceFirst('http://', 'ws://');
+      await PttReceiver.pause(true);
       await _liveManager.connect(
         url: url,
         token: data['token']!.toString(),
@@ -284,12 +343,14 @@ class _PttScreenState extends State<PttScreen> {
       setState(() {
         _liveConnecting = false;
         _error = '${t('ptt_live_failed_prefix')}$e';
+        PttReceiver.pause(false);
       });
     }
   }
 
   Future<void> _stopLive() async {
     await _liveManager.disconnect();
+    await PttReceiver.pause(false);
     if (_selectedChannelId != null && mounted) {
       try {
         final api = context.read<ApiClient>();
@@ -304,6 +365,21 @@ class _PttScreenState extends State<PttScreen> {
     context.watch<LocaleProvider>();
     return Scaffold(
       appBar: AppBar(
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(92),
+          child: SwitchListTile(
+            title: const Text('استقبال PTT تلقائياً'),
+            subtitle: Text(
+              _receiverStatus.isNotEmpty
+                  ? _receiverStatus
+                  : 'يشغّل الصوت الوارد حتى بالخلفية وقفل الشاشة أثناء جلسة الاستقبال',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            value: _receiving,
+            onChanged: _receiverBusy ? null : _toggleReceiver,
+          ),
+        ),
         title: Text(
           _selectedChannelId == null
               ? t('ptt_title')

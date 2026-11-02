@@ -89,4 +89,4 @@
 </div>
 
 <script src="/assets/js/ptt-offline.js?v=1"></script>
-<script src="/assets/js/ptt.js?v=3"></script>
+<script src="/assets/js/ptt.js?v=5"></script>

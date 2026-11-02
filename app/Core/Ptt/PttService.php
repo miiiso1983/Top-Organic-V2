@@ -81,8 +81,9 @@ final class PttService
         $m = self::membership($channelId, $userId);
         if (!$m) return false;
         $c = self::channel($channelId);
+        if (!$c || empty($c['is_active']) || empty($m['can_send'])) return false;
         if ($c && $c['is_readonly'] && $m['role'] !== 'supervisor') return false;
-        // أي عضو في القناة يستطيع التحدث (ما عدا القنوات المقروءة فقط للسوبرفايزر)
+        // العضوية وصلاحية الإرسال وحالة القناة مطلوبة.
         return true;
     }
 
@@ -310,10 +311,11 @@ final class PttService
         }
 
         $channel = $channelId ? self::channel($channelId) : null;
+        if ($type === 'channel' && !$channel) throw new \RuntimeException('القناة غير موجودة');
         if ($channel && !self::canSend((int)$channelId, $senderId)) {
             throw new \RuntimeException('لا تملك صلاحية الإرسال في هذه القناة');
         }
-        $duration = (float)($input['duration_sec'] ?? 0);
+        $duration = (float)($input['duration_sec'] ?? $input['duration_seconds'] ?? 0);
         if ($duration > self::maxDuration($channel) + 1) {
             throw new \RuntimeException('الرسالة أطول من الحد المسموح (' . self::maxDuration($channel) . ' ثانية)');
         }
@@ -363,7 +365,8 @@ final class PttService
             );
             if (!in_array($uid, $muted, true)) {
                 Helpers::notify($uid, $title, 'من: ' . $senderName, $link);
-                PushService::queue($uid, $title, 'رسالة صوتية من ' . $senderName, $link);
+                PushService::queue($uid, $title, 'رسالة صوتية من ' . $senderName, $link, 'ptt_message', $messageId, 'ptt_audio');
+                try { PttApnsService::notify($uid,$messageId,$senderName); } catch (\Throwable $e) { error_log('PTT APNs delivery unavailable'); }
             }
         }
 

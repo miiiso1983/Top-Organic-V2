@@ -1,6 +1,8 @@
 /* PTT — تسجيل ضغط-وتحدث + تشغيل الرسائل + تأكيد */
 (function () {
   'use strict';
+  // Embedded work windows share the parent page's listening session.
+  try { window.PttReceiver = window.PttReceiver || window.parent.PttReceiver; } catch (_) {}
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
   // ===== مشغل الرسائل (مشترك في كل الصفحات) =====
@@ -10,6 +12,7 @@
       if (currentAudio) { currentAudio.pause(); currentAudio = null; }
       const src = btn.dataset.src;
       if (!src) { alert('لا يوجد ملف صوتي'); return; }
+      window.PttReceiver?.pause(true);
       const a = new Audio(src);
       a.preload = 'auto';
       currentAudio = a;
@@ -17,12 +20,12 @@
         await a.play();
         btn.classList.add('playing');
       } catch (e) {
+        window.PttReceiver?.pause(false);
         alert('تعذر تشغيل الصوت: ' + (e.message || 'تحقق من الإذن والاتصال'));
       }
-      a.addEventListener('ended', () => { currentAudio = null; btn.classList.remove('playing'); });
-      a.addEventListener('error', () => { currentAudio = null; btn.classList.remove('playing'); });
+      a.addEventListener('ended', () => { window.PttReceiver?.pause(false); if (btn.dataset.id) fetch('/ptt/messages/' + btn.dataset.id + '/played', { method: 'POST' }).catch(() => {}); currentAudio = null; btn.classList.remove('playing'); });
+      a.addEventListener('error', () => { window.PttReceiver?.pause(false); currentAudio = null; btn.classList.remove('playing'); });
       if (btn.dataset.id) {
-        fetch('/ptt/messages/' + btn.dataset.id + '/played', { method: 'POST' }).catch(() => {});
         btn.closest('.ptt-msg')?.classList.remove('p-emergency');
       }
     });
@@ -53,9 +56,11 @@
     e.preventDefault();
     if (recorder) return;
     cancelled = false;
+    window.PttReceiver?.pause(true);
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
     } catch (err) {
+      window.PttReceiver?.pause(false);
       setStatus('⚠️ لا يمكن الوصول للميكروفون — تحقق من الإذن');
       return;
     }
@@ -85,6 +90,7 @@
     const dur = (Date.now() - startTs) / 1000;
     const mime = recorder.mimeType || 'audio/webm';
     recorder = null; stream = null;
+    window.PttReceiver?.pause(false);
     if (cancelled || dur < 0.4) { setStatus('أُلغي التسجيل'); return; }
     const ext = mime.includes('mp4') ? 'm4a' : (mime.includes('ogg') ? 'ogg' : 'webm');
     const blob = new Blob(chunks, { type: mime });
