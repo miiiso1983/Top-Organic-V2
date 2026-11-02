@@ -155,18 +155,18 @@ namespace {
     check(WorkflowEngine::getRequest($w)['status']==='approved','Graph final correction failed');
     // A late real exit remains raw evidence; approved correction fills the intended night shift.
     seed('attendance',['id'=>500,'employee_id'=>1,'check_type'=>'in','checked_at'=>'2026-10-23 20:00:00','source'=>'mobile']);
-    seed('attendance',['id'=>501,'employee_id'=>1,'check_type'=>'out','checked_at'=>'2026-10-24 05:00:00','source'=>'mobile']);
+    seed('attendance',['id'=>501,'employee_id'=>1,'check_type'=>'out','checked_at'=>'2026-10-24 10:00:01','source'=>'mobile']);
     $f=['date_from'=>'2026-10-23','date_to'=>'2026-10-23'];
     $before=App\Core\HrReportService::attendance($f)['rows'][0];
-    check(str_contains($before['check_out'],'05:00') && $before['total_hours']==='00:00' && $before['attendance_status']==='تجاوز ساعات الوردية','Report must show late exit with zero overlong duration');
+    check(str_contains($before['check_out'],'10:00') && $before['total_hours']==='00:00' && $before['attendance_status']==='تجاوز حد احتساب الدوام','Report must zero exits more than six hours after scheduled end');
     $w=$create(['request_type'=>'out','correction_mode'=>'add','shift_date'=>'2026-10-23','clock_out_at'=>'2026-10-24 04:45:00']);
     WorkflowEngine::decide($w,'approved','',2);
     $after=App\Core\HrReportService::attendance($f)['rows'][0];
-    check($after['total_hours']==='00:00' && $after['attendance_status']==='تجاوز ساعات الوردية' && str_contains($after['check_out'],'04:45'),'Approved time must be visible but overlong report duration is zero');
-    check(Database::query('SELECT checked_at FROM attendance WHERE id=501')->fetchColumn()==='2026-10-24 05:00:00','Late original punch lost');
+    check($after['total_hours']==='08:45' && $after['attendance_status']==='حضور مصحح' && str_contains($after['check_out'],'04:45'),'Approved time must be visible and counted within reporting limits');
+    check(Database::query('SELECT checked_at FROM attendance WHERE id=501')->fetchColumn()==='2026-10-24 10:00:01','Late original punch lost');
     $mobile=HrService::employeeHistory(1,'2026-10')['attendance_shifts'];
     $mobile=array_values(array_filter($mobile,fn($r)=>$r['date']==='2026-10-23'))[0];
-    check($mobile['status']==='تجاوز ساعات الوردية' && $mobile['total_hours']==='00:00' && str_contains($mobile['check_out'],'04:45'),'Mobile must agree with web');
+    check($mobile['status']==='حضور مصحح' && $mobile['total_hours']==='08:45' && str_contains($mobile['check_out'],'04:45'),'Mobile must agree with web');
     rejected(fn()=>$create(['request_type'=>'out','correction_mode'=>'add','shift_date'=>'2026-10-23','clock_out_at'=>'2026-10-24 20:01:00']),'Explicit correction crossed next shift');
     // The legacy cron must not fabricate a fixed-shift exit, even if enabled.
     seed('attendance',['id'=>502,'employee_id'=>1,'check_type'=>'in','checked_at'=>'2026-10-25 20:00:00','source'=>'mobile']);
@@ -178,8 +178,22 @@ namespace {
     rejected(fn()=>WorkflowEngine::decide($pending,'approved','',2),'Changed shift silently approved');
     check(WorkflowEngine::getRequest($pending)['status']==='pending','Changed schedule consumed approval');
     Database::query("UPDATE shifts SET end_time='04:00:00' WHERE id=1");
+    // Flexible report hours recover only after approving the replacement timestamp.
+    Database::query("UPDATE employees SET attendance_type='flexible' WHERE id=1");
+    seed('attendance',['id'=>600,'employee_id'=>1,'check_type'=>'in','checked_at'=>'2026-10-27 08:00:00','source'=>'mobile']);
+    seed('attendance',['id'=>601,'employee_id'=>1,'check_type'=>'out','checked_at'=>'2026-10-28 03:00:00','source'=>'mobile']);
+    $flexFilters=['date_from'=>'2026-10-27','date_to'=>'2026-10-27'];
+    check(App\Core\HrReportService::attendance($flexFilters)['rows'][0]['total_hours']==='00:00','Flexible 19h must report zero');
+    $w=$create(['request_type'=>'out','correction_mode'=>'correct','original_out_at'=>'2026-10-28 03:00:00','clock_out_at'=>'2026-10-28 01:00:00']);
+    check(App\Core\HrReportService::attendance($flexFilters)['rows'][0]['total_hours']==='00:00','Pending correction must not affect report');
+    WorkflowEngine::decide($w,'approved','',2);
+    $corrected=App\Core\HrReportService::attendance($flexFilters)['rows'][0];
+    check($corrected['total_hours']==='17:00' && str_contains($corrected['check_out'],'01:00') && str_contains($corrected['original_out'],'03:00'),'Flexible approved replacement must recompute and retain original audit');
+    $flexMobile=array_values(array_filter(HrService::employeeHistory(1,'2026-10')['attendance_shifts'],fn($r)=>$r['date']==='2026-10-27'))[0];
+    check($flexMobile['total_hours']==='17:00','Flexible mobile summary must match report after correction');
+    Database::query("UPDATE employees SET attendance_type='shift' WHERE id=1");
     // Re-running migration retains the audit and is idempotent.
     eval('?>'.$migration);
-    check((int)Database::query('SELECT COUNT(*) FROM attendance_corrections')->fetchColumn()===8,'Audit count changed');
+    check((int)Database::query('SELECT COUNT(*) FROM attendance_corrections')->fetchColumn()===9,'Audit count changed');
     echo "PASS: immutable audit, exact target, overnight 8h and lateness, final approval only, authorization, stale/conflicting decisions rollback, retry, resubmission, both punches, reject, duplicate protection, old clients, report and mobile history.\n";
 }

@@ -62,14 +62,14 @@ $isMatrix = $type === 'attendance_matrix';
     <div class="form-row rpt-generic"><label><?= $isMatrix ? 'حالة الموظف' : 'الحالة' ?></label>
     <?php if ($isMatrix): ?><select name="status"><option value="">كل الحالات</option><?php foreach (['active'=>'نشط','vacation'=>'إجازة','suspended'=>'موقوف','terminated'=>'منتهي الخدمة','resigned'=>'مستقيل'] as $value=>$label): ?><option value="<?= $value ?>" <?= $f['status'] === $value ? 'selected' : '' ?>><?= $label ?></option><?php endforeach; ?></select>
     <?php else: ?><input type="text" name="status" value="<?= Helpers::e($f['status']) ?>" placeholder="approved/pending..."><?php endif; ?></div>
-    <?php if($type==='attendance'): ?><div class="form-row"><label>حالة سجل الحضور</label><select name="attendance_status"><option value="">الكل</option><?php foreach(['تجاوز ساعات الوردية','حضور مكتمل','حضور مصحح','نسيان بصمة خروج','بانتظار الخروج','بصمة ناقصة','وردية غير محددة'] as $state): ?><option value="<?= Helpers::e($state) ?>" <?= ($f['attendance_status']??'')===$state?'selected':'' ?>><?= Helpers::e($state) ?></option><?php endforeach; ?></select></div><?php endif; ?>
+    <?php if($type==='attendance'): ?><div class="form-row"><label>حالة سجل الحضور</label><select name="attendance_status"><option value="">الكل</option><?php foreach(['تجاوز حد احتساب الدوام','حضور مكتمل','حضور مصحح','نسيان بصمة خروج','بانتظار الخروج','بصمة ناقصة','وردية غير محددة'] as $state): ?><option value="<?= Helpers::e($state) ?>" <?= ($f['attendance_status']??'')===$state?'selected':'' ?>><?= Helpers::e($state) ?></option><?php endforeach; ?></select></div><?php endif; ?>
     <button class="btn">عرض</button>
   </form>
 </div>
 
 <?php if (!empty($report['summary'])): ?><div class="card" style="display:flex;gap:20px;flex-wrap:wrap">
 <?php foreach($report['summary'] as $label=>$count): ?><span><?= Helpers::e($label) ?>: <strong><?= (int)$count ?></strong></span><?php endforeach; ?>
-<p>تظهر أوقات الدخول والخروج المسجلة، وعند تجاوز مدة الوردية المحددة تظهر ساعات الدوام «00:00» مع حالة «تجاوز ساعات الوردية»، بما في ذلك الخروج ضمن مهلة ٣٠ دقيقة. البصمة المفقودة فعلاً تظهر «-» حتى اعتماد تصحيحها، ولا يُربط خروج وردية بدخول وردية أخرى. الدوام المرن يبقى بنظامه الحالي. التصحيحات القديمة لا يتوفر لها وقت أصلي محفوظ.</p>
+<p>تظهر أوقات الدخول والخروج المسجلة والساعات الفعلية. الوردية الثابتة: الساعات «00:00» فقط إذا تأخر الخروج أكثر من ٦ ساعات عن نهايتها. الدوام المرن: الساعات «00:00» إذا تجاوزت المدة بين الدخول والخروج ١٨ ساعة. المساواة مع الحد مسموحة. بعد اعتماد نسيان البصمة يُستخدم الوقت الجديد ويُعاد الحساب بهذه القواعد. يظهر سبب التصفير في الملاحظات وحالة «تجاوز حد احتساب الدوام». البصمة المفقودة فعلاً تظهر «-»، ولا يُربط خروج وردية ثابتة بدخول وردية أخرى. التصحيحات القديمة لا يتوفر لها وقت أصلي محفوظ.</p>
 </div><?php endif; ?>
 <?php if ($type==='fingerprint_forgiveness'): ?><div class="card">فلتر الفترة يخص تاريخ البصمة المطلوب تصحيحها، ويظهر تاريخ تقديم الطلب في عمود مستقل.</div><?php endif; ?>
 <?php if ($isMatrix): ?>

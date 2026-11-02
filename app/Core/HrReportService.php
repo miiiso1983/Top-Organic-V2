@@ -357,7 +357,7 @@ class HrReportService
                 'check_in' => implode("\n", $inLines),
                 'check_out' => implode("\n", $outLines),
                 'total_hours' => $g['total_hours'],
-                'attendance_status' => !empty($g['exceeds_shift']) ? 'تجاوز ساعات الوردية' : (!empty($g['invalid_shift']) ? 'وردية غير محددة' : ($incomplete ? (!empty($g['missing_exit']) ? 'نسيان بصمة خروج' : (!empty($g['pending_exit']) ? 'بانتظار الخروج' : 'بصمة ناقصة')) : ($corrected ? 'حضور مصحح' : 'حضور مكتمل'))),
+                'attendance_status' => !empty($g['exceeds_shift']) ? 'تجاوز حد احتساب الدوام' : (!empty($g['invalid_shift']) ? 'وردية غير محددة' : ($incomplete ? (!empty($g['missing_exit']) ? 'نسيان بصمة خروج' : (!empty($g['pending_exit']) ? 'بانتظار الخروج' : 'بصمة ناقصة')) : ($corrected ? 'حضور مصحح' : 'حضور مكتمل'))),
                 'shift_name'=>$g['shift_name']??'دوام مرن',
                 'exit_deadline'=>implode("\n",$g['exit_deadlines']??[]),
                 'attendance_notes'=>implode("\n",$g['attendance_notes']??[]),

@@ -35,7 +35,7 @@ final class AttendanceShiftPolicy
         return $windows;
     }
 
-    public static function locate(array $record, ?array $shift, ?string $workDate = null): ?array
+    public static function locate(array $record, ?array $shift, ?string $workDate = null, bool $reporting = false): ?array
     {
         if (!$shift || self::isFlexible($shift)) return null;
         $ts = strtotime($record['checked_at']); $date = date('Y-m-d',$ts);
@@ -43,6 +43,8 @@ final class AttendanceShiftPolicy
         foreach ($workDate ? [$workDate] : [date('Y-m-d',$ts-86400),$date,date('Y-m-d',$ts+86400)] as $d) {
             foreach (self::windows($shift,$d) as $w) {
                 $isIn = $record['check_type']==='in';
+                // A late exit in a report must not drift into a shift that has not started.
+                if ($reporting && !$isIn && $ts < $w['start']) continue;
                 $inside = $isIn ? ($ts >= $w['start'] && $ts < $w['end']) : ($ts >= $w['start'] && $ts <= $w['cutoff']);
                 $earlyIn = $isIn && $ts >= $w['start']-14400 && $ts < $w['start'];
                 $w['eligible'] = $inside || $earlyIn;
