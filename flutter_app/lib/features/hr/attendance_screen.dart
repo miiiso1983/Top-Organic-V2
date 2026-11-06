@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:dio/dio.dart';
+import 'attendance_selfie.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:geolocator/geolocator.dart';
@@ -75,6 +77,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   Future<void> _takeSelfie() async {
     final lang = context.read<LocaleProvider>().locale.languageCode;
     String t(String key) => AppStrings.t(key, lang);
+    setState(() => _photo = null);
     // تحقق من الحالة الحالية أولاً
     var status = await Permission.camera.status;
 
@@ -137,6 +140,35 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     if (file != null && mounted) setState(() => _photo = file);
   }
 
+  Future<String?> _preparePhoto(File photo, String lang) async {
+    try {
+      return base64Encode(
+        await prepareAttendanceSelfie(await photo.readAsBytes()),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppStrings.t('hr_attendance_selfie_unreadable', lang),
+            ),
+          ),
+        );
+      }
+      return null;
+    }
+  }
+
+  void _showUploadError(DioException error, String lang) {
+    if (!mounted) return;
+    final msg = error.response?.statusCode == 413
+        ? 'hr_attendance_selfie_rejected'
+        : 'hr_attendance_check_failed';
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(AppStrings.t(msg, lang))));
+  }
+
   Future<void> _check(String type) async {
     final lang = context.read<LocaleProvider>().locale.languageCode;
     String t(String key) => AppStrings.t(key, lang);
@@ -160,10 +192,11 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           );
         return;
       }
-      final selfieBytes = await _photo!.readAsBytes();
-      final selfieBase64 = base64Encode(selfieBytes);
+      final selfieBase64 = await _preparePhoto(_photo!, lang);
+      if (selfieBase64 == null || !mounted) return;
 
-      final bool faceRequired = (_status?['face_recognition_required'] == true);
+      final bool faceRequired =
+          (_status?['face_recognition_required'] != false);
       final bool hasReference = (_status?['has_reference_photo'] == true);
       if (faceRequired) {
         if (!hasReference) {
@@ -235,6 +268,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           ),
         );
       }
+    } on DioException catch (e) {
+      _showUploadError(e, lang);
     } finally {
       if (mounted) setState(() => _checking = false);
     }
@@ -249,9 +284,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     setState(() => _checking = true);
     final repo = context.read<CachedRepository>();
     try {
-      final bytes = await _photo!.readAsBytes();
+      final prepared = await _preparePhoto(_photo!, lang);
+      if (prepared == null || !mounted) return;
       final res = await repo.postJson('/attendance/reference-photo', {
-        'photo': base64Encode(bytes),
+        'photo': prepared,
       });
       if (!mounted) return;
       if (res.data?['ok'] == true) {
@@ -272,6 +308,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           ),
         );
       }
+    } on DioException catch (e) {
+      _showUploadError(e, lang);
     } finally {
       if (mounted) setState(() => _checking = false);
     }

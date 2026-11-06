@@ -281,6 +281,14 @@ class AppStrings {
       'ar': 'يجب التقاط صورة',
       'en': 'A photo must be taken',
     },
+    'hr_attendance_selfie_unreadable': {
+      'ar': 'تعذّر تجهيز الصورة. التقط سيلفي جديداً وحاول مجدداً.',
+      'en': 'Could not prepare the photo. Take a new selfie and try again.',
+    },
+    'hr_attendance_selfie_rejected': {
+      'ar': 'رفض الخادم حجم الصورة. التقط سيلفي جديداً وحاول مجدداً.',
+      'en': 'The server rejected the photo size. Take a new selfie and try again.',
+    },
     'hr_attendance_no_reference_photo': {
       'ar': 'لا توجد صورة مرجعية. راجع المدير لرفع صورة وجهك.',
       'en':
