@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:dio/dio.dart';
 import '../../core/network/api_client.dart';
+import '../../core/utils/attendance_time.dart';
 import '../../core/locale/locale_provider.dart';
 import '../../core/locale/app_strings.dart';
 import '../../features/auth/auth_provider.dart';
@@ -375,6 +376,16 @@ class _WorkflowCreateScreenState extends State<WorkflowCreateScreen> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     _formKey.currentState!.save();
+    if (_isMissingAttendanceTemplate &&
+        ['clock_in_at', 'clock_out_at', 'shift_date'].any((key) {
+          final value = DateTime.tryParse(_values[key]?.toString() ?? '');
+          return value != null && isFutureAttendanceTime(value);
+        })) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(t('attendance_future_time'))));
+      return;
+    }
     if (_isLeaveTemplate && _values['_request_category'] == 'daily_leave') {
       final leaveType = _values['leave_type']?.toString();
       final from = DateTime.tryParse(_values['date_from']?.toString() ?? '');
@@ -1764,6 +1775,9 @@ class _WorkflowCreateScreenState extends State<WorkflowCreateScreen> {
     );
   }
 
+  String _formatAttendanceTime(DateTime value) =>
+      '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')} ${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}:00';
+
   Widget _buildMissingAttendanceForm() {
     final fields = (_selectedTemplate!['fields'] as List?) ?? [];
     final fieldMap = {
@@ -1824,15 +1838,16 @@ class _WorkflowCreateScreenState extends State<WorkflowCreateScreen> {
             ),
             trailing: const Icon(Icons.calendar_today),
             onTap: () async {
+              final now = attendanceNow();
               final d = await showDatePicker(
                 context: context,
-                initialDate:
-                    DateTime.tryParse(
-                      _values['shift_date']?.toString() ?? '',
-                    ) ??
-                    DateTime.now(),
+                initialDate: attendanceInitialDate(
+                  DateTime.tryParse(_values['shift_date']?.toString() ?? ''),
+                  now,
+                ),
                 firstDate: DateTime(2000),
-                lastDate: DateTime(2100),
+                lastDate: now,
+                currentDate: now,
               );
               if (d != null && mounted)
                 setState(
@@ -1860,21 +1875,16 @@ class _WorkflowCreateScreenState extends State<WorkflowCreateScreen> {
                   ? 'حدد البصمة الأصلية المراد تصحيحها'
                   : null,
               onTap: () async {
-                final now = DateTime.now();
-                final date = await showDatePicker(
-                  context: context,
-                  initialDate: now,
-                  firstDate: DateTime(2000),
-                  lastDate: DateTime(2100),
+                final picked = await pickAttendanceTime(
+                  context,
+                  initial: DateTime.tryParse(
+                    _values['original_${selectedType}_at']?.toString() ?? '',
+                  ),
+                  restrictToPast: false,
+                  futureMessage: t('attendance_future_time'),
                 );
-                if (date == null || !mounted) return;
-                final time = await showTimePicker(
-                  context: context,
-                  initialTime: TimeOfDay.now(),
-                );
-                if (time == null || !mounted) return;
-                final value =
-                    '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}:00';
+                if (picked == null || !mounted) return;
+                final value = _formatAttendanceTime(picked);
                 setState(() => _values['original_${selectedType}_at'] = value);
               },
             ),
@@ -1935,25 +1945,15 @@ class _WorkflowCreateScreenState extends State<WorkflowCreateScreen> {
               return null;
             },
             onTap: () async {
-              final now = DateTime.now();
-              final date = await showDatePicker(
-                context: context,
-                initialDate: now,
-                firstDate: DateTime(2000),
-                lastDate: DateTime(2100),
-              );
-              if (date == null || !mounted) return;
-              final time = await showTimePicker(
-                context: context,
-                initialTime: TimeOfDay.fromDateTime(now),
-                builder: (context, child) => Directionality(
-                  textDirection: TextDirection.rtl,
-                  child: child!,
+              final picked = await pickAttendanceTime(
+                context,
+                initial: DateTime.tryParse(
+                  _values['clock_${selectedType}_at']?.toString() ?? '',
                 ),
+                futureMessage: t('attendance_future_time'),
               );
-              if (time == null || !mounted) return;
-              final formatted =
-                  '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}:00';
+              if (picked == null || !mounted) return;
+              final formatted = _formatAttendanceTime(picked);
               setState(() {
                 if (selectedType == 'in') {
                   _values['clock_in_at'] = formatted;

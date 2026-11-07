@@ -14,6 +14,8 @@ $currentEmployee = App\Core\Database::query("SELECT id, full_name FROM employees
 $currentEmployeeId = (int)($currentEmployee['id'] ?? 0);
 $currentEmployeeName = $currentEmployee['full_name'] ?? '';
 $autoEmployee = $currentEmployeeId > 0 && !$isEdit && ($template['code'] ?? '') === 'hr_leave';
+$attendanceFlow = ($template['code'] ?? $template['template_code'] ?? '') === 'hr_missing_attendance';
+$attendanceMaximum = (new \DateTimeImmutable('now', new \DateTimeZone('Asia/Baghdad')))->format('Y-m-d\TH:i:s');
 ?>
 <div class="page-head">
   <h2><?= $isEdit ? 'تعديل ' : 'إنشاء ' ?><?= Helpers::e($template['name']) ?></h2>
@@ -129,7 +131,7 @@ $autoEmployee = $currentEmployeeId > 0 && !$isEdit && ($template['code'] ?? '') 
           <?php endforeach; ?>
         </select>
       <?php else: ?>
-        <input type="<?= $f['type'] ?>" name="<?= $name ?>" value="<?= Helpers::e((string)$val) ?>" <?= !empty($f['required']) ? 'required' : '' ?>>
+        <input type="<?= $f['type'] ?>" name="<?= $name ?>" value="<?= Helpers::e((string)$val) ?>" <?= !empty($f['required']) ? 'required' : '' ?> <?= $attendanceFlow && in_array($name, ['clock_in_at', 'clock_out_at'], true) ? 'max="' . $attendanceMaximum . '" data-attendance-time' : '' ?>>
       <?php endif; ?>
     </div>
     <?php endforeach; ?>
@@ -142,6 +144,23 @@ $autoEmployee = $currentEmployeeId > 0 && !$isEdit && ($template['code'] ?? '') 
     <button class="btn btn-success">إرسال الطلب</button>
   </form>
 </div>
+
+
+<?php if ($attendanceFlow): ?>
+<script src="/assets/js/attendance-time.js"></script>
+<script>
+(function () {
+    const guard = AttendanceTime.create(<?= (int) floor(microtime(true) * 1000) ?>);
+    const inputs = Array.from(document.querySelectorAll('[data-attendance-time]'));
+    inputs.forEach(input => guard.bind(input));
+    // Native validity runs before submit; refresh it while the form remains open.
+    if (inputs.length) window.setInterval(() => inputs.forEach(input => guard.validate(input)), 1000);
+    if (inputs.length) inputs[0].form.addEventListener('submit', event => {
+        if (!inputs.every(input => guard.validate(input, true))) event.preventDefault();
+    });
+})();
+</script>
+<?php endif; ?>
 
 
 <script>

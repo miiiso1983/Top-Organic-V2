@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:dio/dio.dart';
 import '../../core/network/api_client.dart';
+import '../../core/utils/attendance_time.dart';
 import '../../core/locale/locale_provider.dart';
 import '../../core/locale/app_strings.dart';
 
@@ -56,32 +57,26 @@ class _TeamRequestScreenState extends State<TeamRequestScreen> {
   String t(String key) =>
       AppStrings.t(key, context.read<LocaleProvider>().locale.languageCode);
 
-  Future<DateTime?> _pickDateTime(DateTime? initial) async {
-    final now = DateTime.now();
-    final date = await showDatePicker(
-      context: context,
-      initialDate: initial ?? now,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2100),
-    );
-    if (date == null || !mounted) return null;
-    final time = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(initial ?? now),
-      builder: (context, child) =>
-          Directionality(textDirection: TextDirection.rtl, child: child!),
-    );
-    if (time == null) return null;
-    return DateTime(date.year, date.month, date.day, time.hour, time.minute);
-  }
+  Future<DateTime?> _pickDateTime(
+    DateTime? initial, {
+    bool restrictToPast = true,
+  }) => pickAttendanceTime(
+    context,
+    initial: initial,
+    restrictToPast: restrictToPast,
+    futureMessage: t('attendance_future_time'),
+  );
 
-  Future<DateTime?> _pickDate(DateTime? initial) {
-    final now = DateTime.now();
+  Future<DateTime?> _pickDate(DateTime? initial, {bool attendance = false}) {
+    final now = attendance ? attendanceNow() : DateTime.now();
     return showDatePicker(
       context: context,
-      initialDate: initial ?? now,
+      initialDate: attendance
+          ? attendanceInitialDate(initial, now)
+          : initial ?? now,
       firstDate: DateTime(2000),
-      lastDate: DateTime(2100),
+      lastDate: attendance ? now : DateTime(2100),
+      currentDate: now,
     );
   }
 
@@ -101,6 +96,14 @@ class _TeamRequestScreenState extends State<TeamRequestScreen> {
   }
 
   Future<void> _submitMissingAttendance() async {
+    if ([
+      _clockIn,
+      _clockOut,
+      _shiftDate,
+    ].whereType<DateTime>().any((value) => isFutureAttendanceTime(value))) {
+      _showError(t('attendance_future_time'));
+      return;
+    }
     if (_attType == 'in' && _clockIn == null) {
       _showError(t('team_request_att_clock_in_required'));
       return;
@@ -227,7 +230,7 @@ class _TeamRequestScreenState extends State<TeamRequestScreen> {
           ),
           trailing: const Icon(Icons.calendar_today),
           onTap: () async {
-            final d = await _pickDate(_shiftDate);
+            final d = await _pickDate(_shiftDate, attendance: true);
             if (d != null && mounted) setState(() => _shiftDate = d);
           },
         ),
@@ -248,7 +251,10 @@ class _TeamRequestScreenState extends State<TeamRequestScreen> {
               ),
               trailing: const Icon(Icons.edit_calendar),
               onTap: () async {
-                final d = await _pickDateTime(_originalIn);
+                final d = await _pickDateTime(
+                  _originalIn,
+                  restrictToPast: false,
+                );
                 if (d != null && mounted) setState(() => _originalIn = d);
               },
             ),
@@ -262,7 +268,10 @@ class _TeamRequestScreenState extends State<TeamRequestScreen> {
               ),
               trailing: const Icon(Icons.edit_calendar),
               onTap: () async {
-                final d = await _pickDateTime(_originalOut);
+                final d = await _pickDateTime(
+                  _originalOut,
+                  restrictToPast: false,
+                );
                 if (d != null && mounted) setState(() => _originalOut = d);
               },
             ),

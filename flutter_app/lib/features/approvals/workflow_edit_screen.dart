@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:dio/dio.dart';
 import '../../core/network/api_client.dart';
+import '../../core/utils/attendance_time.dart';
 import '../../core/locale/locale_provider.dart';
 import '../../core/locale/app_strings.dart';
 import '../../shared/widgets/offline_banner.dart';
@@ -109,6 +110,16 @@ class _WorkflowEditScreenState extends State<WorkflowEditScreen> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     _formKey.currentState!.save();
+    if (_request?['template_code'] == 'hr_missing_attendance' &&
+        ['clock_in_at', 'clock_out_at', 'shift_date'].any((key) {
+          final value = DateTime.tryParse(_values[key]?.toString() ?? '');
+          return value != null && isFutureAttendanceTime(value);
+        })) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(t('attendance_future_time'))));
+      return;
+    }
     setState(() => _submitting = true);
     try {
       final api = context.read<ApiClient>();
@@ -175,6 +186,40 @@ class _WorkflowEditScreenState extends State<WorkflowEditScreen> {
     final required = field['required'] == true;
     final suffix = required ? ' *' : '';
 
+    if (_request?['template_code'] == 'hr_missing_attendance' &&
+        [
+          'clock_in_at',
+          'clock_out_at',
+          'original_in_at',
+          'original_out_at',
+        ].contains(name)) {
+      return TextFormField(
+        decoration: InputDecoration(labelText: '$label$suffix'),
+        readOnly: true,
+        controller: TextEditingController(
+          text: _values[name]?.toString() ?? '',
+        ),
+        validator: required
+            ? (v) => v == null || v.isEmpty
+                  ? t('workflow_create_datetime_required')
+                  : null
+            : null,
+        onTap: () async {
+          final value = await pickAttendanceTime(
+            context,
+            initial: DateTime.tryParse(_values[name]?.toString() ?? ''),
+            restrictToPast: !name.startsWith('original_'),
+            futureMessage: t('attendance_future_time'),
+          );
+          if (value == null || !mounted) return;
+          setState(
+            () => _values[name] =
+                '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')} ${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}:00',
+          );
+        },
+      );
+    }
+
     switch (type) {
       case 'select':
         final options =
@@ -218,13 +263,23 @@ class _WorkflowEditScreenState extends State<WorkflowEditScreen> {
             text: _values[name]?.toString() ?? '',
           ),
           onTap: () async {
+            final attendance =
+                _request?['template_code'] == 'hr_missing_attendance' &&
+                name == 'shift_date';
+            final now = attendance ? attendanceNow() : DateTime.now();
             final picked = await showDatePicker(
               context: context,
-              initialDate: DateTime.now(),
+              initialDate: attendance
+                  ? attendanceInitialDate(
+                      DateTime.tryParse(_values[name]?.toString() ?? ''),
+                      now,
+                    )
+                  : now,
               firstDate: DateTime(2000),
-              lastDate: DateTime(2100),
+              lastDate: attendance ? now : DateTime(2100),
+              currentDate: now,
             );
-            if (picked != null) {
+            if (picked != null && mounted) {
               setState(
                 () => _values[name] =
                     '${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}',

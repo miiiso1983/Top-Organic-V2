@@ -13,6 +13,18 @@ class AttendanceCorrectionService
         return $value;
     }
 
+    /** Requested attendance must already have happened; the server clock is authoritative. */
+    public static function occurredTimestamp(string $value, ?\DateTimeImmutable $now = null): string
+    {
+        $value = self::timestamp($value);
+        $timezone = new \DateTimeZone('Asia/Baghdad');
+        $now = ($now ?? new \DateTimeImmutable('now', $timezone))->setTimezone($timezone);
+        if ($value > $now->format('Y-m-d H:i:s')) {
+            throw new \RuntimeException('لا يمكن طلب بصمة لوقت لم يحن بعد؛ اختر وقتاً حدث بالفعل بتوقيت بغداد');
+        }
+        return $value;
+    }
+
     public static function transaction(callable $action): mixed
     {
         $db=Database::connect();$owner=!$db->inTransaction();
@@ -29,7 +41,7 @@ class AttendanceCorrectionService
         $type=(string)($data['request_type']??'in');$plan=[];
         foreach(['in','out'] as $kind){
             if(!in_array($type,[$kind,'both'],true))continue;
-            $at=self::timestamp((string)($data['clock_'.$kind.'_at']??''));
+            $at=self::occurredTimestamp((string)($data['clock_'.$kind.'_at']??''));
             $original=trim((string)($data['original_'.$kind.'_at']??''));
             $target=(int)($data['target_'.$kind.'_id']??0);
             $rows=[];
@@ -106,7 +118,7 @@ class AttendanceCorrectionService
         }
         $id=(int)$req['id'];
         if($req['status']==='fully_approved')throw new \RuntimeException('لا يمكن تعديل تصحيح معتمد');
-        $values=[];foreach(['clock_in_at','clock_out_at'] as $key)$values[$key]=!empty($payload[$key])?self::timestamp($payload[$key]):null;
+        $values=[];foreach(['clock_in_at','clock_out_at'] as $key)$values[$key]=!empty($payload[$key])?self::occurredTimestamp($payload[$key]):null;
         $saved=Database::query('SELECT plan_json FROM attendance_correction_plans WHERE request_id=?',[$id])->fetch();
         $refresh=$request['status']==='returned_for_edit' || !$saved || $req['request_type']!==($payload['request_type']??'in') || $req['clock_in_at']!==$values['clock_in_at'] || $req['clock_out_at']!==$values['clock_out_at'];
         $oldPlan=$saved?(json_decode($saved['plan_json'],true)?:[]):[];
@@ -131,6 +143,8 @@ class AttendanceCorrectionService
             Database::query('SELECT id FROM employees WHERE id=? FOR UPDATE',[$eid])->fetch();
             if(!$saved){self::remember($requestId,$eid,self::prepare($eid,$req));$saved=Database::query('SELECT * FROM attendance_correction_plans WHERE request_id=?',[$requestId])->fetch();}
             $plan=json_decode($saved['plan_json'],true);$result=[];$dates=[];
+            // Recheck saved/legacy plans, even when no edit causes prepare() to run.
+            foreach($plan as $change)self::occurredTimestamp((string)$change['corrected_at']);
             if(!isset(reset($plan)['shift_window'])){
                 $plan=self::bindShiftWindows($eid,$plan,$req);
                 self::remember($requestId,$eid,$plan);

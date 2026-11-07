@@ -69,7 +69,9 @@
   <div id="profile" class="panel"></div>
 </div>
 
+<script src="/assets/js/attendance-time.js"></script>
 <script>
+const attendanceTimeGuard = AttendanceTime.create(<?= (int) floor(microtime(true) * 1000) ?>);
 const TOKEN = <?= json_encode($api_token) ?>;
 const IS_MANAGER = <?= json_encode(!empty($is_manager)) ?>;
 const IS_HOUSING_GUARD = <?= json_encode(!empty($is_housing_guard)) ?>;
@@ -354,13 +356,14 @@ async function loadRequests() {
   html += '<div class="card"><h3>' + t('missing_att_title') + '</h3>';
   html += '<div class="form-group"><label>' + t('forget_type_label') + '</label>';
   html += '<select id="ma-type"><option value="in">' + t('opt_clock_in') + '</option><option value="out">' + t('opt_clock_out') + '</option></select></div>';
-  html += '<div class="form-group"><label>' + t('datetime_label') + '</label><input type="datetime-local" id="ma-datetime"></div>';
+  html += '<div class="form-group"><label>' + t('datetime_label') + '</label><input type="datetime-local" id="ma-datetime" required></div>';
   html += '<div class="form-group"><label>' + t('reason_notes_label') + '</label><textarea id="ma-reason" required></textarea></div>';
   html += '<button class="btn" onclick="saveMissingAttendanceRequest()">' + t('btn_send_missing_att') + '</button>';
   html += '<div id="ma-msg"></div></div>';
 
   html += '<div class="card"><h3>' + t('my_requests_title') + '</h3><div id="my-req"></div></div>';
   render('requests', html);
+  attendanceTimeGuard.bind(document.getElementById('ma-datetime'));
   loadMyRequests();
 }
 async function saveMaterialRequest() {
@@ -418,6 +421,7 @@ async function saveMissingAttendanceRequest() {
     document.getElementById('ma-msg').innerHTML = '<div class="error">' + t('reason_required_msg') + '</div>';
     return;
   }
+  if (!attendanceTimeGuard.validate(document.getElementById('ma-datetime'), true)) return;
   const payload = { request_type: type, reason: reasonValue };
   const dateTime = formatMissingAttDateTime(document.getElementById('ma-datetime').value);
   if (type === 'in') { payload.clock_in_at = dateTime; } else if (type === 'out') { payload.clock_out_at = dateTime; }
@@ -526,7 +530,8 @@ function toggleOnBehalfFields(employeeId) {
   if (type === 'missing_attendance') {
     host.innerHTML = '<div class="form-group"><label>' + t('forget_type_label') + '</label>'
       + '<select id="ob-ma-type-' + employeeId + '"><option value="in">' + t('opt_clock_in') + '</option><option value="out">' + t('opt_clock_out') + '</option></select></div>'
-      + '<div class="form-group"><label>' + t('datetime_label') + '</label><input type="datetime-local" id="ob-ma-datetime-' + employeeId + '"></div>';
+      + '<div class="form-group"><label>' + t('datetime_label') + '</label><input type="datetime-local" required id="ob-ma-datetime-' + employeeId + '"></div>';
+    attendanceTimeGuard.bind(document.getElementById('ob-ma-datetime-' + employeeId));
   } else {
     host.innerHTML = '<div class="form-group"><label>' + t('leave_type_label') + '</label>'
       + '<select id="ob-leave-type-' + employeeId + '"><option value="unpaid">' + t('opt_leave_unpaid') + '</option><option value="hourly">' + t('opt_leave_hourly') + '</option><option value="emergency">' + t('opt_leave_emergency') + '</option><option value="sick">' + t('opt_leave_sick') + '</option><option value="annual">' + t('opt_leave_annual') + '</option></select></div>'
@@ -544,6 +549,7 @@ async function submitOnBehalf(employeeId) {
   }
   let res;
   if (type === 'missing_attendance') {
+    if (!attendanceTimeGuard.validate(document.getElementById('ob-ma-datetime-' + employeeId), true)) return;
     const maType = document.getElementById('ob-ma-type-' + employeeId).value;
     const dt = formatMissingAttDateTime(document.getElementById('ob-ma-datetime-' + employeeId).value);
     const payload = { request_type: maType, reason };

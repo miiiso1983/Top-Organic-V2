@@ -1739,6 +1739,12 @@ class AppStrings {
       'ar': 'إرسال الطلب',
       'en': 'Submit Request',
     },
+    'attendance_future_time': {
+      'ar':
+          'اختر تاريخاً ووقتاً حدث بالفعل حسب توقيت بغداد؛ لا يمكن طلب بصمة مستقبلية.',
+      'en':
+          'Choose a date and time that has already occurred in Baghdad time; future punches are not allowed.',
+    },
     'workflow_create_missing_attendance_type_label': {
       'ar': 'نسيان',
       'en': 'Missing Record',

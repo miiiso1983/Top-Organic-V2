@@ -3324,8 +3324,8 @@ class HrService
         if (!in_array($requestType, ['in', 'out', 'both'], true)) {
             throw new \RuntimeException('نوع البصمة يجب أن يكون دخول أو خروج أو كلاهما');
         }
-        $clockInAt = !empty($payload['clock_in_at']) ? AttendanceCorrectionService::timestamp((string)$payload['clock_in_at']) : null;
-        $clockOutAt = !empty($payload['clock_out_at']) ? AttendanceCorrectionService::timestamp((string)$payload['clock_out_at']) : null;
+        $clockInAt = !empty($payload['clock_in_at']) ? AttendanceCorrectionService::occurredTimestamp((string)$payload['clock_in_at']) : null;
+        $clockOutAt = !empty($payload['clock_out_at']) ? AttendanceCorrectionService::occurredTimestamp((string)$payload['clock_out_at']) : null;
 
         if ($requestType === 'in' && !$clockInAt) {
             throw new \RuntimeException('تاريخ/وقت بصمة الدخول مطلوب');

@@ -177,6 +177,9 @@ class WorkflowEngine
         if (trim((string)($payload['reason'] ?? '')) === '') {
             throw new \RuntimeException('سبب/ملاحظات طلب نسيان البصمة مطلوب، يرجى كتابة السبب');
         }
+        foreach (['clock_in_at', 'clock_out_at'] as $field) {
+            if (!empty($payload[$field])) AttendanceCorrectionService::occurredTimestamp((string)$payload[$field]);
+        }
     }
 
     private static function fillAdvanceDefaults(array $template, array $payload): array
