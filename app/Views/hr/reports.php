@@ -17,6 +17,13 @@ $columns = $report['columns'] ?? [];
 $rows = $report['rows'] ?? [];
 $f = $filters;
 $isMatrix = $type === 'attendance_matrix';
+$optionalAttendanceColumns = $type === 'attendance' ? [
+    'attendance_status'=>'حالة السجل',
+    'original_in'=>'الدخول الأصلي',
+    'original_out'=>'الخروج الأصلي',
+    'exit_deadline'=>'نهاية مهلة الخروج',
+    'attendance_notes'=>'ملاحظات البصمات غير المحتسبة',
+] : [];
 ?>
 <?php if ($isMatrix): ?>
 <style>
@@ -150,7 +157,28 @@ $isMatrix = $type === 'attendance_matrix';
   </div>
   <?php endif; ?>
 <?php elseif ($rows): ?>
-<div class="card">
+<div class="card" <?php if($optionalAttendanceColumns): ?>data-attendance-columns data-column-user="<?= (int)\App\Core\Auth::id() ?>"<?php endif; ?>>
+  <?php if ($optionalAttendanceColumns): ?>
+  <style>
+  [data-attendance-columns] [data-column][hidden]{display:none!important}
+  .attendance-column-picker{margin-bottom:12px;border:1px solid var(--border,#d1d5db);border-radius:8px;padding:10px}
+  .attendance-column-picker summary{cursor:pointer;font-weight:600}
+  .attendance-column-options{display:flex;flex-wrap:wrap;gap:12px 22px;margin-top:12px}
+  .attendance-column-options label{display:inline-flex;align-items:center;gap:8px;margin:0;width:auto;cursor:pointer}
+  .attendance-column-options input{width:auto;margin:0;accent-color:#2e7d32}
+  @media print{.attendance-column-picker{display:none!important}}
+  </style>
+  <details class="attendance-column-picker">
+    <summary>الأعمدة الإضافية <span data-column-count>(0/5)</span></summary>
+    <div class="attendance-column-options">
+    <?php foreach($optionalAttendanceColumns as $columnKey=>$columnLabel): ?>
+      <label><input type="checkbox" data-column-toggle="<?= Helpers::e($columnKey) ?>"> <?= Helpers::e($columnLabel) ?></label>
+    <?php endforeach; ?>
+    </div>
+    <p style="margin:10px 0 0;font-size:0.9em">يُحفظ اختيارك في هذا المتصفح للعرض والطباعة. ملفات Excel وPDF تتضمن جميع الأعمدة.</p>
+  </details>
+  <script src="/assets/js/attendance-report-columns.js?v=20261108-1" defer></script>
+  <?php endif; ?>
   <div style="display:flex;gap:10px;margin-bottom:10px">
     <a href="/hr/reports/export?<?= http_build_query(array_merge($f, ['type'=>$type,'format'=>'excel'])) ?>" class="btn btn-sm btn-success">Excel</a>
     <a href="/hr/reports/export?<?= http_build_query(array_merge($f, ['type'=>$type,'format'=>'pdf'])) ?>" class="btn btn-sm btn-danger">PDF</a>
@@ -158,12 +186,12 @@ $isMatrix = $type === 'attendance_matrix';
   </div>
   <?php if ($isMatrix): ?><div class="attendance-matrix-scroll" role="region" aria-label="جدول الحضور اليومي — يمكن التمرير أفقياً" tabindex="0"><?php endif; ?>
   <table <?= $isMatrix ? 'class="attendance-matrix"' : '' ?>>
-    <tr><?php foreach ($report['headers'] as $h): ?><th><?= Helpers::e($h) ?></th><?php endforeach; ?></tr>
+    <tr><?php foreach ($report['headers'] as $columnIndex=>$h): ?><?php $headerKey=$columns[$columnIndex]??''; ?><th <?php if($optionalAttendanceColumns): ?>data-column="<?= Helpers::e($headerKey) ?>" <?= isset($optionalAttendanceColumns[$headerKey])?'hidden':'' ?><?php endif; ?>><?= Helpers::e($h) ?></th><?php endforeach; ?></tr>
     <?php foreach ($rows as $r): ?>
     <tr>
       <?php foreach ($columns as $key): ?>
       <?php $val = $r[$key] ?? ''; ?>
-      <td>
+      <td <?php if($optionalAttendanceColumns): ?>data-column="<?= Helpers::e($key) ?>" <?= isset($optionalAttendanceColumns[$key])?'hidden':'' ?><?php endif; ?>>
         <?php if ($isMatrix && str_starts_with($key, 'day_')): ?><span class="<?= $val === 'حاضر' ? 'matrix-present' : ($val === 'غائب' ? 'matrix-absent' : ($val === 'بصمة ناقصة' ? 'matrix-incomplete' : 'matrix-future')) ?>"><?= Helpers::e((string)$val) ?></span>
         <?php elseif ($key === 'status' && $val): ?><span class="badge badge-<?= $val==='approved'||$val==='paid'||$val==='settled'||$val==='active'||$val==='fully_approved'?'success':($val==='rejected'?'danger':($val==='cancelled'?'secondary':'warning')) ?>"><?= $statusLabels[$val] ?? $val ?></span>
         <?php elseif ($key === 'adjustment_type'): ?><?= $adjustLabels[$val] ?? $val ?>
