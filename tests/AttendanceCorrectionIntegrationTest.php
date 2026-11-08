@@ -86,9 +86,13 @@ namespace {
     seed('attendance',['id'=>3,'employee_id'=>1,'check_type'=>'in','checked_at'=>'2026-10-16 20:00:00','source'=>'mobile']);
     seed('attendance',['id'=>4,'employee_id'=>1,'check_type'=>'out','checked_at'=>'2026-10-16 23:00:00','source'=>'mobile']);
     rejected(fn()=>Correction::timestamp('2026-02-30T12:00'),'Invalid calendar date accepted');
-    rejected(fn()=>Correction::prepare(1,['request_type'=>'out','clock_out_at'=>'2026-10-16 04:00:00']),'Ambiguous same-day punches accepted');
+    $nightPlan=Correction::prepare(1,['request_type'=>'out','clock_out_at'=>'2026-10-16 04:00:00']);
+    check($nightPlan['out']['target_id']===2,'Night request selected a different shift on the same calendar day');
+    seed('attendance',['id'=>99,'employee_id'=>1,'check_type'=>'out','checked_at'=>'2026-10-16 02:00:00','source'=>'mobile']);
+    rejected(fn()=>Correction::prepare(1,['request_type'=>'out','clock_out_at'=>'2026-10-16 04:00:00']),'Multiple punches in the same shift guessed silently');
+    Database::query('DELETE FROM attendance WHERE id=99');
     rejected(fn()=>Correction::prepare(3,['request_type'=>'out','clock_out_at'=>'2026-10-16 04:00:00','target_out_id'=>2]),'Other employee punch accepted');
-    $data=['correction_mode'=>'correct','original_out_at'=>'2026-10-16T01:00','clock_out_at'=>'2026-10-16T04:00'];
+    $data=['clock_out_at'=>'2026-10-16T04:00'];
     $wid=$create($data);$rid=$requestLedger($wid);
     check($rid>0,'Generic web submission must create linked ledger');
     rejected(fn()=>HrService::applyMissingAttendanceRequest($rid,2),'Applied before final approval');
@@ -120,7 +124,7 @@ namespace {
     WorkflowEngine::decide($w2,'approved','',2);
     check(Database::query('SELECT checked_at FROM attendance WHERE id=3')->fetchColumn()==='2026-10-16 19:50:00','Resubmission not synchronized');
     // Missing punch addition and both-punch transactions.
-    $w=$create(['request_type'=>'both','correction_mode'=>'add','clock_in_at'=>'2026-10-18 20:00','clock_out_at'=>'2026-10-19 04:00']);
+    $w=$create(['request_type'=>'both','clock_in_at'=>'2026-10-18 20:00','clock_out_at'=>'2026-10-19 04:00']);
     WorkflowEngine::decide($w,'approved','',2);
     check((int)Database::query('SELECT COUNT(*) FROM attendance_corrections WHERE request_id=?',[$requestLedger($w)])->fetchColumn()===2,'Both punch addition incomplete');
     rejected(fn()=>$create(['request_type'=>'in','correction_mode'=>'add','clock_in_at'=>'2026-10-18 20:00']),'Duplicate punch addition accepted');
@@ -159,11 +163,12 @@ namespace {
     $f=['date_from'=>'2026-10-23','date_to'=>'2026-10-23'];
     $before=App\Core\HrReportService::attendance($f)['rows'][0];
     check(str_contains($before['check_out'],'10:00') && $before['total_hours']==='00:00' && $before['attendance_status']==='تجاوز حد احتساب الدوام','Report must zero exits more than six hours after scheduled end');
-    $w=$create(['request_type'=>'out','correction_mode'=>'add','shift_date'=>'2026-10-23','clock_out_at'=>'2026-10-24 04:45:00']);
+    $w=$create(['request_type'=>'out','shift_date'=>'2026-10-23','clock_out_at'=>'2026-10-24 04:45:00']);
     WorkflowEngine::decide($w,'approved','',2);
     $after=App\Core\HrReportService::attendance($f)['rows'][0];
     check($after['total_hours']==='08:45' && $after['attendance_status']==='حضور مصحح' && str_contains($after['check_out'],'04:45'),'Approved time must be visible and counted within reporting limits');
-    check(Database::query('SELECT checked_at FROM attendance WHERE id=501')->fetchColumn()==='2026-10-24 10:00:01','Late original punch lost');
+    check(Database::query('SELECT checked_at FROM attendance WHERE id=501')->fetchColumn()==='2026-10-24 04:45:00','Approved missing punch did not replace late exit');
+    check(Database::query('SELECT original_at FROM attendance_corrections WHERE attendance_id=501')->fetchColumn()==='2026-10-24 10:00:01','Late original evidence lost');
     $mobile=HrService::employeeHistory(1,'2026-10')['attendance_shifts'];
     $mobile=array_values(array_filter($mobile,fn($r)=>$r['date']==='2026-10-23'))[0];
     check($mobile['status']==='حضور مصحح' && $mobile['total_hours']==='08:45' && str_contains($mobile['check_out'],'04:45'),'Mobile must agree with web');
@@ -184,7 +189,7 @@ namespace {
     seed('attendance',['id'=>601,'employee_id'=>1,'check_type'=>'out','checked_at'=>'2026-10-28 03:00:00','source'=>'mobile']);
     $flexFilters=['date_from'=>'2026-10-27','date_to'=>'2026-10-27'];
     check(App\Core\HrReportService::attendance($flexFilters)['rows'][0]['total_hours']==='00:00','Flexible 19h must report zero');
-    $w=$create(['request_type'=>'out','correction_mode'=>'correct','original_out_at'=>'2026-10-28 03:00:00','clock_out_at'=>'2026-10-28 01:00:00']);
+    $w=$create(['request_type'=>'out','clock_out_at'=>'2026-10-28 01:00:00']);
     check(App\Core\HrReportService::attendance($flexFilters)['rows'][0]['total_hours']==='00:00','Pending correction must not affect report');
     WorkflowEngine::decide($w,'approved','',2);
     $corrected=App\Core\HrReportService::attendance($flexFilters)['rows'][0];
@@ -192,8 +197,16 @@ namespace {
     $flexMobile=array_values(array_filter(HrService::employeeHistory(1,'2026-10')['attendance_shifts'],fn($r)=>$r['date']==='2026-10-27'))[0];
     check($flexMobile['total_hours']==='17:00','Flexible mobile summary must match report after correction');
     Database::query("UPDATE employees SET attendance_type='shift' WHERE id=1");
+    // A real punch arriving while an automatic addition is pending requires a new review.
+    $pending=$create(['request_type'=>'out','shift_date'=>'2026-10-25','clock_out_at'=>'2026-10-26 04:00:00']);
+    seed('attendance',['id'=>700,'employee_id'=>1,'check_type'=>'out','checked_at'=>'2026-10-26 03:59:00','source'=>'mobile']);
+    rejected(fn()=>WorkflowEngine::decide($pending,'approved','',2),'Newly recorded real punch ignored by pending request');
+    check(WorkflowEngine::getRequest($pending)['status']==='pending','Conflicting new punch consumed approval');
     // Re-running migration retains the audit and is idempotent.
     eval('?>'.$migration);
     check((int)Database::query('SELECT COUNT(*) FROM attendance_corrections')->fetchColumn()===9,'Audit count changed');
+    $fields=json_decode(Database::query('SELECT fields_json FROM approval_templates WHERE id=1')->fetchColumn(),true);
+    check(!array_intersect(['correction_mode','original_in_at','original_out_at'],array_column($fields,'name')),'Old migration restored removed controls');
+    require __DIR__.'/../scripts/migrate_missing_attendance_form.php';
     echo "PASS: immutable audit, exact target, overnight 8h and lateness, final approval only, authorization, stale/conflicting decisions rollback, retry, resubmission, both punches, reject, duplicate protection, old clients, report and mobile history.\n";
 }

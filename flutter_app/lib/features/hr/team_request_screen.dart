@@ -27,10 +27,7 @@ class _TeamRequestScreenState extends State<TeamRequestScreen> {
 
   // حقول طلب نسيان البصمة
   String _attType = 'in';
-  String _correctionMode = 'add';
   DateTime? _shiftDate;
-  DateTime? _originalIn;
-  DateTime? _originalOut;
   DateTime? _clockIn;
   DateTime? _clockOut;
   final _attReasonController = TextEditingController();
@@ -97,8 +94,8 @@ class _TeamRequestScreenState extends State<TeamRequestScreen> {
 
   Future<void> _submitMissingAttendance() async {
     if ([
-      _clockIn,
-      _clockOut,
+      if (_attType != 'out') _clockIn,
+      if (_attType != 'in') _clockOut,
       _shiftDate,
     ].whereType<DateTime>().any((value) => isFutureAttendanceTime(value))) {
       _showError(t('attendance_future_time'));
@@ -120,12 +117,6 @@ class _TeamRequestScreenState extends State<TeamRequestScreen> {
       _showError(t('team_request_att_reason_required'));
       return;
     }
-    if (_correctionMode == 'correct' &&
-        ((_attType != 'out' && _originalIn == null) ||
-            (_attType != 'in' && _originalOut == null))) {
-      _showError('حدد وقت البصمة الأصلية المراد تصحيحها');
-      return;
-    }
     setState(() => _submitting = true);
     try {
       final api = context.read<ApiClient>();
@@ -134,16 +125,12 @@ class _TeamRequestScreenState extends State<TeamRequestScreen> {
         data: {
           'request_type': _attType,
           'shift_date': _shiftDate == null ? null : _fmtDate(_shiftDate!),
-          'correction_mode': _correctionMode,
-          'original_in_at': _correctionMode == 'correct' && _originalIn != null
-              ? _fmtDateTime(_originalIn!)
+          'clock_in_at': _attType != 'out' && _clockIn != null
+              ? _fmtDateTime(_clockIn!)
               : null,
-          'original_out_at':
-              _correctionMode == 'correct' && _originalOut != null
-              ? _fmtDateTime(_originalOut!)
+          'clock_out_at': _attType != 'in' && _clockOut != null
+              ? _fmtDateTime(_clockOut!)
               : null,
-          'clock_in_at': _clockIn != null ? _fmtDateTime(_clockIn!) : null,
-          'clock_out_at': _clockOut != null ? _fmtDateTime(_clockOut!) : null,
           'reason': _attReasonController.text,
         },
       );
@@ -210,16 +197,6 @@ class _TeamRequestScreenState extends State<TeamRequestScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        DropdownButtonFormField<String>(
-          initialValue: _correctionMode,
-          isExpanded: true,
-          decoration: const InputDecoration(labelText: 'نوع المعالجة'),
-          items: const [
-            DropdownMenuItem(value: 'add', child: Text('إضافة بصمة مفقودة')),
-            DropdownMenuItem(value: 'correct', child: Text('تصحيح بصمة خاطئة')),
-          ],
-          onChanged: (v) => setState(() => _correctionMode = v ?? 'add'),
-        ),
         ListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('تاريخ بداية الوردية (اختياري)'),
@@ -235,49 +212,7 @@ class _TeamRequestScreenState extends State<TeamRequestScreen> {
           },
         ),
         const Text(
-          'مهلة خروج الدوام الثابت ٣٠ دقيقة بعد نهاية الوردية؛ بعدها يلزم طلب معتمد. الدوام المرن لا يتغير.',
-        ),
-        if (_correctionMode == 'correct') ...[
-          const Text(
-            'اختر الوقت الأصلي من سجل الموظف. يبقى محفوظاً بعد اعتماد التصحيح.',
-          ),
-          if (_attType != 'out')
-            ListTile(
-              title: const Text('وقت الدخول الأصلي'),
-              subtitle: Text(
-                _originalIn == null
-                    ? 'اختر التاريخ والوقت'
-                    : _fmtDateTime(_originalIn!),
-              ),
-              trailing: const Icon(Icons.edit_calendar),
-              onTap: () async {
-                final d = await _pickDateTime(
-                  _originalIn,
-                  restrictToPast: false,
-                );
-                if (d != null && mounted) setState(() => _originalIn = d);
-              },
-            ),
-          if (_attType != 'in')
-            ListTile(
-              title: const Text('وقت الخروج الأصلي'),
-              subtitle: Text(
-                _originalOut == null
-                    ? 'اختر التاريخ والوقت'
-                    : _fmtDateTime(_originalOut!),
-              ),
-              trailing: const Icon(Icons.edit_calendar),
-              onTap: () async {
-                final d = await _pickDateTime(
-                  _originalOut,
-                  restrictToPast: false,
-                );
-                if (d != null && mounted) setState(() => _originalOut = d);
-              },
-            ),
-        ],
-        const Text(
-          'أدخل أدناه الوقت الصحيح. لخروج بعد منتصف الليل اختر تاريخ اليوم التالي. التطبيق يتم بعد الاعتماد النهائي.',
+          'اختر وقت البصمة المطلوب. يُطبّق بعد اكتمال الموافقات ويُعاد احتساب الدوام في التقارير. لخروج بعد منتصف الليل اختر تاريخ اليوم التالي.',
         ),
         const SizedBox(height: 12),
 

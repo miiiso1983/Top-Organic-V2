@@ -21,7 +21,7 @@ class FakeAttendanceApi extends ApiClient {
 void main() {
   for (final platform in [TargetPlatform.android, TargetPlatform.iOS]) {
     testWidgets(
-      'Correction exposes original punch and validates input on $platform',
+      'Missing attendance has one simple flow and validates input on $platform',
       (tester) async {
         await tester.binding.setSurfaceSize(const Size(320, 1000));
         addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -52,11 +52,9 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(find.text('وقت الدخول الأصلي'), findsNothing);
-        await tester.tap(find.byType(DropdownButtonFormField<String>).first);
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('تصحيح بصمة خاطئة').last);
-        await tester.pumpAndSettle();
-        expect(find.text('وقت الدخول الأصلي'), findsOneWidget);
+        expect(find.text('نوع المعالجة'), findsNothing);
+        expect(find.text('تصحيح بصمة خاطئة'), findsNothing);
+        expect(find.byType(DropdownButtonFormField<String>), findsOneWidget);
         expect(find.text('وقت الخروج الأصلي'), findsNothing);
         expect(tester.takeException(), isNull);
         await tester.ensureVisible(find.text('إرسال الطلب'));

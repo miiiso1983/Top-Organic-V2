@@ -1809,27 +1809,6 @@ class _WorkflowCreateScreenState extends State<WorkflowCreateScreen> {
                 subtitle: Text(employeeName),
               ),
             ),
-          DropdownButtonFormField<String>(
-            initialValue:
-                _values['correction_mode']?.toString().isNotEmpty == true
-                ? _values['correction_mode'].toString()
-                : 'add',
-            isExpanded: true,
-            decoration: const InputDecoration(labelText: 'نوع المعالجة'),
-            items: const [
-              DropdownMenuItem(value: 'add', child: Text('إضافة بصمة مفقودة')),
-              DropdownMenuItem(
-                value: 'correct',
-                child: Text('تصحيح بصمة خاطئة'),
-              ),
-            ],
-            onSaved: (v) => _values['correction_mode'] = v ?? 'add',
-            onChanged: (v) => setState(() {
-              _values['correction_mode'] = v ?? 'add';
-              _values['original_in_at'] = null;
-              _values['original_out_at'] = null;
-            }),
-          ),
           ListTile(
             title: const Text('تاريخ بداية الوردية (اختياري)'),
             subtitle: Text(
@@ -1856,43 +1835,10 @@ class _WorkflowCreateScreenState extends State<WorkflowCreateScreen> {
                 );
             },
           ),
-          const Text(
-            'مهلة خروج الدوام الثابت ٣٠ دقيقة بعد نهاية الوردية؛ بعدها يلزم طلب معتمد.',
-          ),
-          if (_values['correction_mode'] == 'correct') ...[
-            const SizedBox(height: 12),
-            TextFormField(
-              key: ValueKey('original_$selectedType'),
-              readOnly: true,
-              controller: TextEditingController(
-                text: _values['original_${selectedType}_at']?.toString() ?? '',
-              ),
-              decoration: const InputDecoration(
-                labelText: 'تاريخ ووقت البصمة الأصلية',
-                suffixIcon: Icon(Icons.edit_calendar),
-              ),
-              validator: (v) => v == null || v.isEmpty
-                  ? 'حدد البصمة الأصلية المراد تصحيحها'
-                  : null,
-              onTap: () async {
-                final picked = await pickAttendanceTime(
-                  context,
-                  initial: DateTime.tryParse(
-                    _values['original_${selectedType}_at']?.toString() ?? '',
-                  ),
-                  restrictToPast: false,
-                  futureMessage: t('attendance_future_time'),
-                );
-                if (picked == null || !mounted) return;
-                final value = _formatAttendanceTime(picked);
-                setState(() => _values['original_${selectedType}_at'] = value);
-              },
-            ),
-          ],
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 12),
             child: Text(
-              'الوقت أدناه هو الوقت الصحيح المطلوب اعتماده. لخروج بعد منتصف الليل اختر تاريخ اليوم التالي. يبقى الوقت الأصلي محفوظاً للمراجعة.',
+              'اختر وقت البصمة المطلوب. يُطبّق بعد اكتمال الموافقات ويُعاد احتساب الدوام في التقارير. لخروج بعد منتصف الليل اختر تاريخ اليوم التالي.',
             ),
           ),
           DropdownButtonFormField<String>(

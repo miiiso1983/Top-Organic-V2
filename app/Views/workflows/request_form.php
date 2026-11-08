@@ -2,19 +2,14 @@
 <?php $employees = $employees ?? []; ?>
 <?php $isEdit = !empty($request); ?>
 <?php
-$leaveFlow = false;
-foreach ($template['fields'] as $f) {
-    if ($f['name'] === 'request_type') {
-        $leaveFlow = true;
-        break;
-    }
-}
+$leaveFlow = ($template['code'] ?? $template['template_code'] ?? '') === 'hr_leave';
 $currentUserId = $_SESSION['user_id'] ?? 0;
 $currentEmployee = App\Core\Database::query("SELECT id, full_name FROM employees WHERE user_id = ? LIMIT 1", [$currentUserId])->fetch();
 $currentEmployeeId = (int)($currentEmployee['id'] ?? 0);
 $currentEmployeeName = $currentEmployee['full_name'] ?? '';
 $autoEmployee = $currentEmployeeId > 0 && !$isEdit && ($template['code'] ?? '') === 'hr_leave';
 $attendanceFlow = ($template['code'] ?? $template['template_code'] ?? '') === 'hr_missing_attendance';
+if ($attendanceFlow) $template['fields'] = array_values(array_filter($template['fields'], fn($f) => !in_array($f['name'] ?? '', ['correction_mode', 'original_in_at', 'original_out_at'], true)));
 $attendanceMaximum = (new \DateTimeImmutable('now', new \DateTimeZone('Asia/Baghdad')))->format('Y-m-d\TH:i:s');
 ?>
 <div class="page-head">
@@ -38,6 +33,7 @@ $attendanceMaximum = (new \DateTimeImmutable('now', new \DateTimeZone('Asia/Bagh
   ?>
   <form method="post" action="<?= $action ?>" enctype="multipart/form-data">
     <?php if (!$isEdit): ?><input type="hidden" name="template_id" value="<?= $template['id'] ?>"><?php endif; ?>
+    <?php if ($attendanceFlow): ?><p>اختر نوع البصمة والتاريخ والوقت المطلوب. يُطبّق الوقت بعد اكتمال الموافقات ويُعاد احتساب الدوام في التقارير. لخروج بعد منتصف الليل اختر تاريخ اليوم التالي.</p><?php endif; ?>
     <div class="form-row">
       <label>عنوان الطلب</label>
       <input name="title" value="<?= Helpers::e($request['title'] ?? ($template['name'] . ' - ' . date('Y-m-d'))) ?>" required>
@@ -97,7 +93,8 @@ $attendanceMaximum = (new \DateTimeImmutable('now', new \DateTimeZone('Asia/Bagh
           <?php else: ?>
           <option value="">—</option>
           <?php foreach ($f['options'] ?? [] as $opt): ?>
-          <option value="<?= Helpers::e($opt) ?>" <?= (string)$val === (string)$opt ? 'selected' : '' ?>><?= Helpers::e($opt) ?></option>
+          <?php $optionValue = is_array($opt) ? ($opt['value'] ?? '') : $opt; $optionLabel = is_array($opt) ? ($opt['label'] ?? $optionValue) : $opt; ?>
+          <option value="<?= Helpers::e($optionValue) ?>" <?= (string)$val === (string)$optionValue ? 'selected' : '' ?>><?= Helpers::e($optionLabel) ?></option>
           <?php endforeach; ?>
           <?php endif; ?>
         </select>
@@ -131,7 +128,8 @@ $attendanceMaximum = (new \DateTimeImmutable('now', new \DateTimeZone('Asia/Bagh
           <?php endforeach; ?>
         </select>
       <?php else: ?>
-        <input type="<?= $f['type'] ?>" name="<?= $name ?>" value="<?= Helpers::e((string)$val) ?>" <?= !empty($f['required']) ? 'required' : '' ?> <?= $attendanceFlow && in_array($name, ['clock_in_at', 'clock_out_at'], true) ? 'max="' . $attendanceMaximum . '" data-attendance-time' : '' ?>>
+        <?php $attendanceTime = $attendanceFlow && in_array($name, ['clock_in_at', 'clock_out_at'], true); ?>
+        <input type="<?= $attendanceTime ? 'datetime-local' : $f['type'] ?>" name="<?= $name ?>" value="<?= Helpers::e($attendanceTime ? str_replace(' ', 'T', (string)$val) : (string)$val) ?>" <?= !empty($f['required']) ? 'required' : '' ?> <?= $attendanceTime ? 'max="' . $attendanceMaximum . '" data-attendance-time' : '' ?>>
       <?php endif; ?>
     </div>
     <?php endforeach; ?>
@@ -152,11 +150,20 @@ $attendanceMaximum = (new \DateTimeImmutable('now', new \DateTimeZone('Asia/Bagh
 (function () {
     const guard = AttendanceTime.create(<?= (int) floor(microtime(true) * 1000) ?>);
     const inputs = Array.from(document.querySelectorAll('[data-attendance-time]'));
+    const type = inputs[0]?.form.querySelector('[name="request_type"]');
+    const updatePunchFields = () => inputs.forEach(input => {
+        const active = type?.value === 'both' || input.name === 'clock_' + type?.value + '_at';
+        input.disabled = !active;
+        input.required = active;
+        input.closest('[data-field]').hidden = !active;
+    });
+    type?.addEventListener('change', updatePunchFields);
+    updatePunchFields();
     inputs.forEach(input => guard.bind(input));
     // Native validity runs before submit; refresh it while the form remains open.
     if (inputs.length) window.setInterval(() => inputs.forEach(input => guard.validate(input)), 1000);
     if (inputs.length) inputs[0].form.addEventListener('submit', event => {
-        if (!inputs.every(input => guard.validate(input, true))) event.preventDefault();
+        if (!inputs.filter(input => !input.disabled).every(input => guard.validate(input, true))) event.preventDefault();
     });
 })();
 </script>

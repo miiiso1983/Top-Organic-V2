@@ -56,10 +56,10 @@ class AttendanceCorrectionService
             }elseif($mode==='correct'){
                 throw new \RuntimeException('لتصحيح بصمة خاطئة حدد تاريخ ووقت البصمة الأصلية');
             }elseif($mode==='auto'){
-                $rows=Database::query('SELECT id,checked_at,source FROM attendance WHERE employee_id=? AND check_type=? AND checked_at>=? AND checked_at<?',[$employeeId,$kind,substr($at,0,10).' 00:00:00',date('Y-m-d 00:00:00',strtotime(substr($at,0,10).' +1 day'))])->fetchAll();
+                $rows=self::automaticCandidates($employeeId,$kind,$at,$data);
             }
             if($mode==='add'&&($target||$original!==''))throw new \RuntimeException('اختر تصحيح بصمة عند تحديد وقت أصلي');
-            if(count($rows)>1)throw new \RuntimeException('توجد عدة بصمات؛ اختر تصحيح بصمة وحدد الوقت الأصلي بدقة');
+            if(count($rows)>1)throw new \RuntimeException('توجد عدة بصمات من النوع نفسه لهذا الدوام؛ يرجى مراجعة الموارد البشرية لتحديد السجل الصحيح قبل تقديم طلب نسيان البصمة');
             $old=$rows[0]??null;
             if(!$old&&Database::query('SELECT id FROM attendance WHERE employee_id=? AND check_type=? AND checked_at=?',[$employeeId,$kind,$at])->fetch())throw new \RuntimeException('هذه البصمة مسجلة بالفعل');
             $revision=$old?(int)Database::query('SELECT COALESCE(MAX(id),0) FROM attendance_corrections WHERE attendance_id=?',[$old['id']])->fetchColumn():0;
@@ -68,6 +68,43 @@ class AttendanceCorrectionService
         if(!$plan)throw new \RuntimeException('نوع البصمة غير صالح');
         if(isset($plan['in'],$plan['out'])&&$plan['out']['corrected_at']<=$plan['in']['corrected_at'])throw new \RuntimeException('وقت الخروج يجب أن يكون بعد الدخول؛ حدد تاريخ اليوم التالي للمناوبة الليلية');
         return self::bindShiftWindows($employeeId,$plan,$data);
+    }
+
+    /** A single missing-punch form: freeze the relevant existing punch, or add a missing one.
+     * Never choose arbitrarily between multiple punches or cross into another work period.
+     */
+    private static function automaticCandidates(int $employeeId,string $kind,string $at,array $data): array
+    {
+        $from=date('Y-m-d H:i:s',strtotime($at.' -2 days'));
+        $to=date('Y-m-d H:i:s',strtotime($at.' +2 days'));
+        $shift=HrService::loadShiftMap([$employeeId],substr($from,0,10),substr($to,0,10))[$employeeId]??null;
+        $records=Database::query('SELECT id,check_type,checked_at,source FROM attendance WHERE employee_id=? AND checked_at>=? AND checked_at<? ORDER BY checked_at,id',[$employeeId,$from,$to])->fetchAll();
+        if(!AttendanceShiftPolicy::isFlexible($shift)){
+            $bound=self::bindShiftWindows($employeeId,[$kind=>['corrected_at'=>$at]],$data);
+            $key=$bound[$kind]['shift_window']['key'];
+            return array_values(array_filter($records,function($r)use($kind,$shift,$key){
+                return $r['check_type']===$kind && (AttendanceShiftPolicy::locate($r,$shift,null,true)['key']??null)===$key;
+            }));
+        }
+        // Flexible shifts follow the adjacent opposite punch, including an overnight exit.
+        $lower=substr($at,0,10).' 00:00:00';
+        $upper=date('Y-m-d 00:00:00',strtotime(substr($at,0,10).' +1 day'));
+        if($kind==='out'){
+            $ins=array_values(array_filter($records,fn($r)=>$r['check_type']==='in'));
+            $before=array_values(array_filter($ins,fn($r)=>$r['checked_at']<$at));
+            if($before){
+                $lower=end($before)['checked_at'];$upper=$to;
+                foreach($ins as $r)if($r['checked_at']>$lower){$upper=$r['checked_at'];break;}
+            }
+        }else{
+            $outs=array_values(array_filter($records,fn($r)=>$r['check_type']==='out'));
+            $after=array_values(array_filter($outs,fn($r)=>$r['checked_at']>$at));
+            if($after){
+                $upper=$after[0]['checked_at'];$lower=$from;
+                foreach($outs as $r)if($r['checked_at']<$upper)$lower=$r['checked_at'];
+            }
+        }
+        return array_values(array_filter($records,fn($r)=>$r['check_type']===$kind && $r['checked_at']>=$lower && $r['checked_at']<$upper));
     }
 
     private static function bindShiftWindows(int $employeeId,array $plan,array $data): array
@@ -81,7 +118,7 @@ class AttendanceCorrectionService
         foreach($plan as $kind=>&$change){
             $record=['check_type'=>$kind,'checked_at'=>$change['corrected_at'],'source'=>'request'];
             $w=AttendanceShiftPolicy::locate($record,$shift,$date?:null);
-            if(!$w)throw new \RuntimeException('يجب تحديد وردية صحيحة للموظف قبل اعتماد تصحيح البصمة');
+            if(!$w)throw new \RuntimeException('يجب تحديد وردية صحيحة للموظف قبل اعتماد طلب نسيان البصمة');
             if(!AttendanceShiftPolicy::approvedTimeFits($record,$w,$shift))throw new \RuntimeException('وقت البصمة خارج الوردية المحددة أو يتداخل مع الوردية التالية؛ راجع تاريخ بداية الوردية');
             unset($w['rank'],$w['distance'],$w['eligible']);
             $change['shift_window']=$w;$change['shift_date']=$date;
@@ -159,6 +196,10 @@ class AttendanceCorrectionService
             self::validateOrder($eid,$plan);
             foreach($plan as $kind=>$change){
                 $at=$change['corrected_at'];$id=(int)($change['target_id']??0);
+                if(($change['mode']??'')==='auto'){
+                    $candidates=self::automaticCandidates($eid,$kind,$at,['shift_date'=>$change['shift_date']??'']);
+                    if(count($candidates)>1 || (int)($candidates[0]['id']??0)!==$id)throw new \RuntimeException('تغيّرت بصمات الموظف منذ تقديم الطلب؛ أعد طلب نسيان البصمة للمراجعة قبل الاعتماد');
+                }
                 if($id){
                     $old=Database::query('SELECT * FROM attendance WHERE id=? AND employee_id=? AND check_type=? FOR UPDATE',[$id,$eid,$kind])->fetch();
                     if(!$old||$old['checked_at']!==$change['original_at']||$old['source']!==$change['original_source']||(int)Database::query('SELECT COALESCE(MAX(id),0) FROM attendance_corrections WHERE attendance_id=?',[$id])->fetchColumn()!==(int)($change['revision']??0))throw new \RuntimeException('تغيّرت البصمة منذ تقديم الطلب؛ أعد الطلب للتعديل والمراجعة');
