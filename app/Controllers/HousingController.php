@@ -57,7 +57,7 @@ class HousingController extends Controller
              JOIN housing_sites s ON s.id = ea.site_id
              LEFT JOIN housing_apartments ap ON ap.id = ea.apartment_id
              LEFT JOIN housing_rooms r ON r.id = ea.room_id
-             WHERE ea.status = 'active'
+             WHERE ea.status = 'active' AND e.status <> 'resigned'
              ORDER BY s.sort_order, ap.apartment_number, r.room_number, e.full_name"
         )->fetchAll();
 
@@ -69,7 +69,7 @@ class HousingController extends Controller
              FROM employees e
              LEFT JOIN departments d ON d.id = e.department_id
              LEFT JOIN jobs j ON j.id = e.job_id
-             WHERE e.file_status = 'open'
+             WHERE e.file_status = 'open' AND e.status <> 'resigned'
              ORDER BY e.full_name"
         )->fetchAll();
 
@@ -251,6 +251,7 @@ class HousingController extends Controller
 
         Database::beginTransaction();
         try {
+            \App\Core\EmployeeSeparationService::assertHousingEligible($employeeId);
             // إنهاء أي تسكين نشط سابق لنفس الموظف قبل التسكين الجديد
             Database::query(
                 "UPDATE employee_housing_assignments SET status = 'ended', ended_date = ? WHERE employee_id = ? AND status = 'active'",
@@ -483,6 +484,7 @@ class HousingController extends Controller
 
             Database::beginTransaction();
             try {
+                \App\Core\EmployeeSeparationService::assertHousingEligible((int)$employee['id']);
                 Database::query(
                     "UPDATE employee_housing_assignments SET status = 'ended', ended_date = ? WHERE employee_id = ? AND status = 'active'",
                     [$assignedDate, $employee['id']]
@@ -635,7 +637,7 @@ class HousingController extends Controller
              JOIN housing_sites s ON s.id = ea.site_id
              LEFT JOIN housing_apartments ap ON ap.id = ea.apartment_id
              LEFT JOIN housing_rooms r ON r.id = ea.room_id
-             WHERE ea.status = 'active'
+             WHERE ea.status = 'active' AND e.status <> 'resigned'
              ORDER BY s.sort_order, ap.apartment_number, r.room_number, e.full_name"
         )->fetchAll();
 

@@ -11,7 +11,7 @@ class Auth
         $user = Database::query(
             "SELECT u.*, r.name AS role_name FROM users u
              JOIN roles r ON r.id = u.role_id
-             WHERE u.username = ? AND u.is_active = 1",
+             WHERE u.username = ? AND u.is_active = 1 AND NOT EXISTS (SELECT 1 FROM employees resigned_employee WHERE resigned_employee.user_id=u.id AND resigned_employee.status='resigned')",
             [$username]
         )->fetch();
 
@@ -111,7 +111,7 @@ class Auth
         $user = Database::query(
             "SELECT u.*, r.name AS role_name FROM users u
              JOIN roles r ON r.id = u.role_id
-             WHERE u.id = ? AND u.is_active = 1",
+             WHERE u.id = ? AND u.is_active = 1 AND NOT EXISTS (SELECT 1 FROM employees resigned_employee WHERE resigned_employee.user_id=u.id AND resigned_employee.status='resigned')",
             [(int)$userId]
         )->fetch();
         if (!$user) {

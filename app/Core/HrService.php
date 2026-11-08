@@ -235,6 +235,7 @@ class HrService
             $userId = (int) Database::lastInsertId();
         }
         Database::query("UPDATE employees SET user_id = ? WHERE id = ?", [$userId, $employeeId]);
+        EmployeeSeparationService::enforce($employeeId);
     }
 
     /** تحديث حساب دخول موجود مرتبط بموظف */
@@ -271,7 +272,7 @@ class HrService
         if (!$role) {
             return;
         }
-        $updates = "role_id = ?, full_name = ?, branch_id = ?, is_active = 1";
+        $updates = "role_id = ?, full_name = ?, branch_id = ?, is_active = NOT EXISTS (SELECT 1 FROM employees e WHERE e.user_id=users.id AND e.status='resigned')";
         $params = [(int)$role['id'], $fullName, $branchId];
         if ($username !== null && $username !== '') {
             $updates .= ", username = ?";
@@ -1189,6 +1190,17 @@ class HrService
      */
     public static function syncHousingAssignment(int $employeeId, ?string $housingType, float $deductionAmount): void
     {
+        $db=Database::connect();$owner=!$db->inTransaction();
+        if($owner)$db->beginTransaction();
+        try {
+            self::syncHousingAssignmentInternal($employeeId,$housingType,$deductionAmount);
+            if($owner)$db->commit();
+        } catch(\Throwable $e) { if($owner && $db->inTransaction())$db->rollBack();throw $e; }
+    }
+
+    private static function syncHousingAssignmentInternal(int $employeeId, ?string $housingType, float $deductionAmount): void
+    {
+        if (EmployeeSeparationService::enforce($employeeId)) return;
         // يُحفظ المبلغ الفعلي دائماً في وحدة السكن/ملف الموظف بغض النظر عن حالة الإعفاء، ويُطبّق الإعفاء فقط عند احتساب الراتب (calculatePayrollComponents)
         // لضمان عودة الاستقطاع بالمبلغ الصحيح فور رفع الإعفاء دون فقدان القيمة المحددة
         $active = Database::query(
@@ -2290,6 +2302,7 @@ class HrService
             throw new \RuntimeException('فشل إغلاق ملف الموظف ' . $code);
         }
         Database::query("UPDATE employees SET status = ? WHERE id = ?", [$empStatus, $employeeId]);
+        EmployeeSeparationService::enforce($employeeId);
         return 'closed';
     }
 

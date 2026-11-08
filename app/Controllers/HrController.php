@@ -525,6 +525,7 @@ class HrController extends Controller
         $insurancePercentage = (float)$this->input('insurance_percentage', 0);
         $insuranceOccurrences = (int)$this->input('insurance_occurrences', 0);
 
+        Database::beginTransaction();
         Database::query(
             "UPDATE employees SET full_name = ?, phone = ?, nationality = ?, residence = ?, position = ?, department = ?, department_id = ?, job_id = ?, manager_id = ?,
              user_id = ?, admin_level = ?, base_salary = ?, hire_date = ?, work_start_time = ?, work_end_time = ?, shift_id = ?, branch_id = ?, cost_center_id = ?, account_id = ?, status = ?, reference_photo = ?, attendance_type = ?, geofence_exempt = ?, required_hours = ?, weekly_off_day = ?,
@@ -545,6 +546,9 @@ class HrController extends Controller
              $attendanceType, $geofenceExempt, $requiredHours, $weeklyOffDay,
              $housingType, $housingMonthlyDeduction, $housingExempt, $insurancePercentage, $insuranceOccurrences, (int)$id]
         );
+
+        \App\Core\EmployeeSeparationService::enforce((int)$id);
+        Database::commit();
 
         $new = Database::query("SELECT * FROM employees WHERE id = ?", [(int)$id])->fetch();
         $auditFields = ['full_name','phone','nationality','residence','position','department','department_id','job_id','manager_id','user_id','admin_level','base_salary','hire_date','work_start_time','work_end_time','shift_id','branch_id','cost_center_id','account_id','status','reference_photo','attendance_type','geofence_exempt','required_hours','weekly_off_day','housing_type','housing_monthly_deduction','housing_exempt','insurance_percentage','insurance_occurrences'];
@@ -619,6 +623,7 @@ class HrController extends Controller
             Response::redirect('/hr/employees/' . $id . '/edit');
         }
         } catch (\Throwable $e) {
+            Database::rollBack();
             error_log('updateEmployee failed: ' . $e->getMessage());
             $this->flash('danger', 'فشل حفظ التعديلات: ' . $e->getMessage());
             $modalSuffix = !empty($_GET['modal']) ? '?modal=1' : '';

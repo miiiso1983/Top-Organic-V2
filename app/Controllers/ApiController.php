@@ -52,7 +52,7 @@ class ApiController extends Controller
              LEFT JOIN employees e ON e.user_id = u.id
              LEFT JOIN jobs j ON j.id = e.job_id
              LEFT JOIN departments d ON d.id = e.department_id
-             WHERE u.username = ? AND u.is_active = 1",
+             WHERE u.username = ? AND u.is_active = 1 AND NOT EXISTS (SELECT 1 FROM employees resigned_employee WHERE resigned_employee.user_id=u.id AND resigned_employee.status='resigned')",
             [(string)($b['username'] ?? '')]
         )->fetch();
 
@@ -2305,7 +2305,7 @@ class ApiController extends Controller
             return;
         }
         $employeeId = (int)$id;
-        $emp = Database::query("SELECT e.id,e.file_status,COALESCE(d.name,e.department) department_name FROM employees e LEFT JOIN departments d ON d.id=e.department_id WHERE e.id=?",[$employeeId])->fetch();
+        $emp = Database::query("SELECT e.id,e.file_status,e.status,COALESCE(d.name,e.department) department_name FROM employees e LEFT JOIN departments d ON d.id=e.department_id WHERE e.id=?",[$employeeId])->fetch();
         if (!$emp || !\App\Core\HousingAccess::canEdit($emp)) {
             Response::json(['ok'=>false,'error'=>'ليس لديك صلاحية تعديل تسكين هذا الموظف'],403);
             return;
@@ -2340,6 +2340,7 @@ class ApiController extends Controller
 
         Database::beginTransaction();
         try {
+            \App\Core\EmployeeSeparationService::assertHousingEligible($employeeId);
             if ($existing) {
                 Database::query(
                     "UPDATE employee_housing_assignments SET site_id = ?, apartment_id = ?, room_id = ?, deduction_amount = ? WHERE id = ?",
