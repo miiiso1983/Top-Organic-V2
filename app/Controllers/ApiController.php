@@ -548,9 +548,9 @@ class ApiController extends Controller
         $lng = isset($b['longitude']) ? (float)$b['longitude'] : null;
         $type = ($b['check_type'] ?? 'in') === 'out' ? 'out' : 'in';
 
-        // التحقق من آخر سجل حضور/انصراف للموظف لمنع التسجيل المتكرر أو المتعارض
+        // تجاهل السجلات المستقبلية القديمة: الحالة الحالية تعتمد على آخر بصمة حلّ وقتها فقط.
         $lastRecord = Database::query(
-            "SELECT check_type FROM attendance WHERE employee_id = ? ORDER BY checked_at DESC LIMIT 1",
+            "SELECT check_type FROM attendance WHERE employee_id = ? AND checked_at <= NOW() ORDER BY checked_at DESC, id DESC LIMIT 1",
             [(int)$emp['id']]
         )->fetch();
         if ($type === 'in' && $lastRecord && $lastRecord['check_type'] === 'in') {
@@ -691,7 +691,7 @@ class ApiController extends Controller
         $today = Database::query(
             "SELECT MIN(CASE WHEN check_type='in' THEN checked_at END) AS clock_in,
                     MAX(CASE WHEN check_type='out' THEN checked_at END) AS clock_out
-             FROM attendance WHERE employee_id = ? AND DATE(checked_at) = CURDATE()",
+             FROM attendance WHERE employee_id = ? AND DATE(checked_at) = CURDATE() AND checked_at <= NOW()",
             [(int)$emp['id']]
         )->fetch();
         $branch = null;
