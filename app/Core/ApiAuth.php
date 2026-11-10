@@ -10,6 +10,8 @@ class ApiAuth
 
     public static function issueToken(int $userId): string
     {
+        SystemActivityService::identify($userId);
+        SystemActivityService::outcome('accepted');
         $payload = base64_encode(json_encode([
             'uid' => $userId,
             'exp' => time() + 60 * 60 * 24 * 30, // صلاحية 30 يوماً

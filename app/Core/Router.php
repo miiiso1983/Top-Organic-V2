@@ -22,6 +22,7 @@ class Router
     {
         $pattern = preg_replace('#\{([a-zA-Z_]+)\}#', '(?P<$1>[^/]+)', $path);
         $this->routes[] = [
+            'path'       => $path,
             'method'     => $method,
             'pattern'    => '#^' . $pattern . '$#',
             'handler'    => $handler,
@@ -37,6 +38,8 @@ class Router
             Auth::refresh();
         }
 
+        SystemActivityService::begin();
+
         $uri    = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/';
         $method = $_SERVER['REQUEST_METHOD'];
 
@@ -44,8 +47,11 @@ class Router
             if ($route['method'] !== $method) continue;
             if (!preg_match($route['pattern'], $uri, $matches)) continue;
 
+            SystemActivityService::route($route['path'], $route['handler'], array_filter($matches, 'is_string', ARRAY_FILTER_USE_KEY));
+
             foreach ($route['middleware'] as $mw) {
                 if ($mw === 'auth' && !Auth::check()) {
+                    SystemActivityService::outcome('rejected');
                     $this->isApi($uri) ? Response::json(['error' => 'unauthorized'], 401)
                                        : Response::redirect('/login');
                     return;

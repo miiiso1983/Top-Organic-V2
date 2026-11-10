@@ -19,8 +19,10 @@ class AuthController extends Controller
         $password = (string)$this->input('password');
 
         if (Auth::attempt($username, $password)) {
+            \App\Core\SystemActivityService::outcome('accepted');
             Response::redirect('/dashboard');
         }
+        \App\Core\SystemActivityService::outcome('rejected');
         $this->viewBare('auth/login', ['error' => 'اسم المستخدم أو كلمة المرور غير صحيحة']);
     }
 

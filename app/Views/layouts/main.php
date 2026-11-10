@@ -73,7 +73,7 @@ window.reinitSelect2 = function(selector) { window._select2ReinitQueue.push(sele
       <?php if (Auth::can('hr.view')): ?>
       <a href="/module/hr"><span class="nav-icon"><i class="fa-solid fa-users-gear"></i></span> <span class="nav-label">الموارد البشرية</span></a>
       <?php endif; ?>
-      <?php if (Auth::canAny(['approvals.decide', 'mobile.approvals', 'workflow.create', 'reports.view', 'admin.users', 'admin.settings', 'kitchen.manage'])): ?>
+      <?php if (Auth::canAny(['admin.audit', 'approvals.decide', 'mobile.approvals', 'workflow.create', 'reports.view', 'admin.users', 'admin.settings', 'kitchen.manage'])): ?>
       <a href="/module/management"><span class="nav-icon"><i class="fa-solid fa-screwdriver-wrench"></i></span> <span class="nav-label">الإدارة</span></a>
       <?php endif; ?>
     </nav>

@@ -18,6 +18,13 @@
 </div>
 
 <div class="res-grid">
+  <?php if (Auth::can('admin.audit')): ?>
+  <a href="/admin/activity" class="res-card">
+    <div class="icon"><i class="fa-solid fa-clock-rotate-left"></i></div>
+    <div class="title">سجل أحداث النظام</div>
+    <div class="desc">العمليات وتغييرات الموظفين والموافقات وطلبات الويب والموبايل</div>
+  </a>
+  <?php endif; ?>
   <?php if (Auth::canAny(['approvals.decide', 'mobile.approvals'])): ?>
   <a href="/approvals" class="res-card">
     <div class="icon"><i class="fa-solid fa-pen-to-square"></i></div>
