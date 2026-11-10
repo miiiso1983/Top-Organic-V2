@@ -13,6 +13,7 @@ use App\Controllers\{AuthController, DashboardController, PosController, OrderCo
 $router = new Router();
 
 $router->get('/admin/activity', [\App\Controllers\SystemActivityController::class, 'index'], ['auth', 'perm:admin.audit']);
+$router->get('/admin/activity/export', [\App\Controllers\SystemActivityController::class, 'export'], ['auth', 'perm:admin.audit']);
 
 // المصادقة
 $router->get('/', [AuthController::class, 'loginForm']);

@@ -4,7 +4,7 @@ namespace App\Core;
 
 final class SystemActivityReport
 {
-    public const SOURCES = ['operations' => 'العمليات', 'employees' => 'تعديلات الموظفين', 'approvals' => 'الموافقات', 'web' => 'طلبات الويب', 'mobile_api' => 'طلبات الموبايل / API'];
+    public const SOURCES = ['operations' => 'العمليات', 'employees' => 'تعديلات الموظفين', 'approvals' => 'الموافقات', 'web' => 'طلبات الويب', 'mobile_api' => 'طلبات الموبايل'];
     public const RESULTS = ['recorded' => 'حدث مسجّل', 'response' => 'استجابة طبيعية', 'accepted' => 'دخول ناجح', 'rejected' => 'طلب مرفوض', 'error' => 'خطأ في الخادم'];
     public static function filters(array $input): array
     {
@@ -61,8 +61,17 @@ final class SystemActivityReport
         if ($f['q'] !== '') {
             // Literal substring search: escape SQL LIKE metacharacters, not arbitrary wildcards.
             $q = '%' . strtr($f['q'], ['!' => '!!', '%' => '!%', '_' => '!_']) . '%';
-            $sql .= " AND (u.full_name LIKE ? ESCAPE '!' OR events.actor_name LIKE ? ESCAPE '!' OR target.full_name LIKE ? ESCAPE '!' OR events.action LIKE ? ESCAPE '!' OR events.entity LIKE ? ESCAPE '!' OR events.details LIKE ? ESCAPE '!')";
+            $conditions = ["u.full_name LIKE ? ESCAPE '!'", "events.actor_name LIKE ? ESCAPE '!'", "target.full_name LIKE ? ESCAPE '!'", "events.action LIKE ? ESCAPE '!'", "events.entity LIKE ? ESCAPE '!'", "events.details LIKE ? ESCAPE '!'"];
             array_push($params, $q,$q,$q,$q,$q,$q);
+            foreach (self::choices() as $kind => $options) {
+                $codes = array_keys(array_filter($options, fn($label) => mb_stripos($label, $f['q']) !== false));
+                if ($codes) {
+                    $column = $kind === 'actions' ? 'events.action' : 'events.entity';
+                    $conditions[] = $column . ' IN (' . implode(',', array_fill(0, count($codes), '?')) . ')';
+                    array_push($params, ...$codes);
+                }
+            }
+            $sql .= ' AND (' . implode(' OR ', $conditions) . ')';
         }
         return [$sql,$params];
     }
@@ -74,10 +83,42 @@ final class SystemActivityReport
         $rows = Database::query("SELECT events.*, COALESCE(NULLIF(events.actor_name,''),u.full_name,'غير محدد / النظام') AS user_name, target.full_name AS target_name, b.name AS branch_name" . $sql . ' ORDER BY events.created_at DESC, events.source, events.id DESC LIMIT ' . $f['per_page'] . ' OFFSET ' . (($page-1)*$f['per_page']), $params)->fetchAll();
         return compact('total','pages','page','rows');
     }
-    public static function actionLabel(string $action): string
+    public static function actionLabel(string $action): string {return SystemActivityPresentation::action($action);}
+
+    public static function choices(): array
     {
-        $known = ['ApiController.attendanceCheck'=>'تسجيل حضور أو انصراف', 'ApiController.attendanceStatus'=>'عرض حالة الحضور', 'ApiController.login'=>'تسجيل دخول الموبايل', 'AuthController.login'=>'تسجيل دخول الويب', 'AuthController.logout'=>'تسجيل خروج الويب', 'AuthController.loginForm'=>'عرض صفحة الدخول', 'SystemActivityController.index'=>'عرض سجل أحداث النظام'];
-        if (isset($known[$action])) return $known[$action];
-        return ['created'=>'إنشاء','submitted'=>'إرسال للاعتماد','approved'=>'موافقة','rejected'=>'رفض','returned_for_edit'=>'إعادة للتعديل','resubmitted'=>'إعادة إرسال','comment'=>'تعليق','cancelled'=>'إلغاء','viewed'=>'عرض','update'=>'تعديل','login'=>'تسجيل دخول','logout'=>'تسجيل خروج'][$action] ?? $action;
+        $actions = []; $entities = [];
+        $queries = [
+            'SELECT DISTINCT action, entity FROM audit_log',
+            "SELECT DISTINCT action, 'employees' AS entity FROM employee_audit_logs",
+            "SELECT DISTINCT action, 'requests' AS entity FROM request_history",
+            'SELECT DISTINCT action, route AS entity FROM system_activity_events',
+        ];
+        foreach ($queries as $sql) foreach (Database::query($sql)->fetchAll() as $row) {
+            $actions[$row['action']] = SystemActivityPresentation::action($row['action']);
+            if ($row['entity']) $entities[$row['entity']] = SystemActivityPresentation::entity($row['entity']);
+        }
+        asort($actions); asort($entities);
+        return compact('actions', 'entities');
+    }
+
+    /** One snapshot, no page limit and no buffered result array. Always restore the connection. */
+    public static function exportRows(array $filters): \Generator
+    {
+        [$sql, $params] = self::query($filters);
+        $db = Database::connect();
+        $buffered = $db->getAttribute(\PDO::MYSQL_ATTR_USE_BUFFERED_QUERY);
+        $ownsTransaction = !$db->inTransaction();
+        $stmt = null;
+        try {
+            if ($ownsTransaction) $db->beginTransaction();
+            $db->setAttribute(\PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, false);
+            $stmt = Database::query("SELECT events.*, COALESCE(NULLIF(events.actor_name,''),u.full_name,'غير محدد / النظام') AS user_name, target.full_name AS target_name, b.name AS branch_name" . $sql . ' ORDER BY events.created_at DESC, events.source, events.id DESC', $params);
+            while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) yield $row;
+        } finally {
+            if ($stmt) $stmt->closeCursor();
+            $db->setAttribute(\PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, $buffered);
+            if ($ownsTransaction && $db->inTransaction()) $db->rollBack();
+        }
     }
 }

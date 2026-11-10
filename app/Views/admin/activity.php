@@ -1,7 +1,8 @@
 <?php
-use App\Core\{Helpers, SystemActivityReport, SystemActivityService};
+use App\Core\{Helpers, SystemActivityReport, SystemActivityService, SystemActivityPresentation};
 $e = static fn($v) => Helpers::e((string)($v ?? ''));
 $url = static fn(array $change) => '/admin/activity?' . http_build_query(array_merge($filters, $change));
+$choices ??= SystemActivityReport::choices();
 $actorLabel = '';
 foreach ($actors as $actor) if ((int)$actor['id'] === $filters['user_id']) $actorLabel = $actor['full_name'].' (#'.$actor['id'].')';
 ?>
@@ -28,14 +29,14 @@ html[data-theme="dark"] .activity-page,body.dark-mode .activity-page{--a-bg:#182
    <label>نوع السجل<select name="source"><option value="">كل الأنواع</option><?php foreach(SystemActivityReport::SOURCES as $v=>$label): ?><option value="<?= $e($v) ?>" <?= $filters['source']===$v?'selected':'' ?>><?= $e($label) ?></option><?php endforeach ?></select></label>
    <label>نتيجة الحدث<select name="result"><option value="">كل النتائج</option><?php foreach(SystemActivityReport::RESULTS as $v=>$label): ?><option value="<?= $e($v) ?>" <?= $filters['result']===$v?'selected':'' ?>><?= $e($label) ?></option><?php endforeach ?></select></label>
    <label>الفرع<select name="branch_id"><option value="0">كل الفروع</option><?php foreach($branches as $b): ?><option value="<?= (int)$b['id'] ?>" <?= $filters['branch_id']==$b['id']?'selected':'' ?>><?= $e($b['name']) ?></option><?php endforeach ?></select></label>
-   <label>العملية (مطابقة تامة)<input name="action" value="<?= $e($filters['action']) ?>" placeholder="اختر العملية من أي صف" maxlength="190"></label>
-   <label>الكيان / المسار<input name="entity" value="<?= $e($filters['entity']) ?>" placeholder="مثال: employees" maxlength="190"></label>
+   <label>العملية<select name="action"><option value="">كل العمليات</option><?php foreach($choices['actions'] as $code=>$label): ?><option value="<?= $e($code) ?>" <?= $filters['action']===$code?'selected':'' ?>><?= $e($label) ?></option><?php endforeach ?></select></label>
+   <label>السجل المتأثر<select name="entity"><option value="">كل السجلات</option><?php foreach($choices['entities'] as $code=>$label): ?><option value="<?= $e($code) ?>" <?= $filters['entity']===$code?'selected':'' ?>><?= $e($label) ?></option><?php endforeach ?></select></label>
    <label>رقم السجل المتأثر<input type="number" name="entity_id" min="1" value="<?= $filters['entity_id'] ?: '' ?>" placeholder="رقم الموظف أو الطلب"></label>
    <label>عدد الصفوف<select name="per_page"><?php foreach([25,50,100] as $n): ?><option <?= $filters['per_page']===$n?'selected':'' ?>><?= $n ?></option><?php endforeach ?></select></label>
   </div>
-  <div class="activity-tools"><div><button class="btn btn-primary" type="submit">بحث وتصفية</button> <a href="/admin/activity">مسح الفلاتر</a></div><div class="activity-tools" style="margin:0"><span>فترات سريعة:</span><a href="<?= $e($url(['from'=>date('Y-m-d'),'to'=>date('Y-m-d'),'page'=>1])) ?>">اليوم</a><a href="<?= $e($url(['from'=>date('Y-m-d',strtotime('-6 days')),'to'=>date('Y-m-d'),'page'=>1])) ?>">آخر ٧ أيام</a><a href="<?= $e($url(['from'=>date('Y-m-01'),'to'=>date('Y-m-d'),'page'=>1])) ?>">هذا الشهر</a><a href="<?= $e($url(['from'=>'','to'=>'','page'=>1])) ?>">كل الفترات</a><a href="<?= $e($url(['result'=>'rejected','page'=>1])) ?>">الطلبات المرفوضة</a></div></div>
+  <div class="activity-tools"><div><button class="btn btn-primary" type="submit">بحث وتصفية</button> <button class="btn btn-primary" type="submit" formaction="/admin/activity/export">تصدير النتائج إلى Excel</button> <a href="/admin/activity">مسح الفلاتر</a></div><div class="activity-tools" style="margin:0"><span>فترات سريعة:</span><a href="<?= $e($url(['from'=>date('Y-m-d'),'to'=>date('Y-m-d'),'page'=>1])) ?>">اليوم</a><a href="<?= $e($url(['from'=>date('Y-m-d',strtotime('-6 days')),'to'=>date('Y-m-d'),'page'=>1])) ?>">آخر ٧ أيام</a><a href="<?= $e($url(['from'=>date('Y-m-01'),'to'=>date('Y-m-d'),'page'=>1])) ?>">هذا الشهر</a><a href="<?= $e($url(['from'=>'','to'=>'','page'=>1])) ?>">كل الفترات</a><a href="<?= $e($url(['result'=>'rejected','page'=>1])) ?>">الطلبات المرفوضة</a></div></div>
  </form>
- <p class="activity-note">التوقيت: بغداد. طلبات الويب والموبايل تُسجَّل من تاريخ تفعيل هذه الشاشة؛ السجلات السابقة تعرض التفاصيل المحفوظة فقط. «استجابة طبيعية» تعني استجابة اتصال سليمة ولا تعني اعتماد طلب إداري. الفرع في السجلات القديمة هو الفرع الحالي لمنفّذ الإجراء. لا تُحفظ كلمات المرور أو صور الوجه أو محتويات الرسائل ضمن سجل الاتصال.</p>
+ <p class="activity-note">التصدير يشمل جميع النتائج المطابقة للفلاتر المختارة، وليس الصفحة الحالية فقط. التوقيت: بغداد. طلبات الويب والموبايل تُسجَّل من تاريخ تفعيل هذه الشاشة؛ السجلات السابقة تعرض التفاصيل المحفوظة فقط. «استجابة طبيعية» تعني استجابة اتصال سليمة ولا تعني اعتماد طلب إداري. الفرع في السجلات القديمة هو الفرع الحالي لمنفّذ الإجراء. لا تُحفظ كلمات المرور أو صور الوجه أو محتويات الرسائل ضمن سجل الاتصال.</p>
  </div>
  <div class="activity-panel">
  <div class="activity-head"><strong><?= number_format($report['total']) ?> حدث مطابق</strong><span>الصفحة <?= $report['page'] ?> من <?= $report['pages'] ?></span></div>
@@ -44,19 +45,12 @@ html[data-theme="dark"] .activity-page,body.dark-mode .activity-page{--a-bg:#182
  <tr><td><time dir="ltr"><?= $e($row['created_at']) ?></time><small>#<?= (int)$row['id'] ?></small></td>
  <td><?php if($row['user_id']): ?><a href="<?= $e($url(['user_id'=>(int)$row['user_id'],'page'=>1])) ?>"><?= $e($row['user_name']) ?></a><?php else: ?><?= $e($row['user_name']) ?><?php endif ?><small><?= $e($row['branch_name'] ?: 'فرع غير محدد') ?></small></td>
  <td><?= $e(SystemActivityReport::SOURCES[$row['source']]) ?></td>
- <td><a href="<?= $e($url(['action'=>$row['action'],'page'=>1])) ?>"><?= $e(SystemActivityReport::actionLabel($row['action'])) ?></a><small><code><?= $e($row['entity']) ?></code> <?= $row['entity_id'] ? '#'.(int)$row['entity_id'] : '' ?></small><?php if($row['target_name']): ?><small><?= $e($row['target_name']) ?></small><?php endif ?></td>
- <td><span class="activity-badge <?= $e($row['result']) ?>"><?= $e(SystemActivityReport::RESULTS[$row['result']] ?? $row['result']) ?></span><?php if($row['http_status']): ?><small>HTTP <?= (int)$row['http_status'] ?></small><?php endif ?></td>
+ <td><a href="<?= $e($url(['action'=>$row['action'],'page'=>1])) ?>"><?= $e(SystemActivityReport::actionLabel($row['action'])) ?></a><small><?= $e(SystemActivityPresentation::entity($row['entity'])) ?> <?= $row['entity_id'] ? '#'.(int)$row['entity_id'] : '' ?></small><?php if($row['target_name']): ?><small><?= $e($row['target_name']) ?></small><?php endif ?></td>
+ <td><span class="activity-badge <?= $e($row['result']) ?>"><?= $e(SystemActivityReport::RESULTS[$row['result']] ?? $row['result']) ?></span></td>
  <td><details><summary>عرض التفاصيل</summary><div class="activity-details">
-<?php if($row['source']==='employees'): ?><strong>الحقل:</strong> <?= $e($row['field_name']) ?>
-<strong>قبل:</strong> <?= $e(SystemActivityService::safeDetails($row['old_value'],$row['field_name'])) ?>
-<strong>بعد:</strong> <?= $e(SystemActivityService::safeDetails($row['new_value'],$row['field_name'])) ?>
-<?php endif ?><?php if($row['details']): ?><?= $e(SystemActivityService::safeDetails($row['details'])) ?>
-<?php endif ?><?php if($row['method']): ?><strong>نوع الطلب:</strong> <?= $e($row['method']) ?>
-<strong>زمن الاستجابة:</strong> <?= (int)$row['duration_ms'] ?> مللي ثانية
-<?php endif ?><?php if($row['ip']): ?><strong>عنوان الاتصال:</strong> <span dir="ltr"><?= $e($row['ip']) ?></span>
-<?php endif ?><?php if($row['device']): ?><strong>الجهاز:</strong> <?= $e($row['device']) ?>
-<?php endif ?><?php if(!$row['details'] && !$row['method'] && $row['source']!=='employees'): ?>لا توجد تفاصيل إضافية محفوظة لهذا الحدث.
-<?php endif ?></div></details></td></tr>
+<?= $e(SystemActivityPresentation::details($row)) ?>
+<details><summary>بيانات فنية عند الحاجة</summary><div>رمز العملية: <code><?= $e($row['action']) ?></code></div><div>رمز السجل: <code><?= $e($row['entity']) ?></code></div><?php if($row['http_status']): ?><div>رمز الاستجابة: <?= (int)$row['http_status'] ?></div><?php endif ?></details>
+</div></details></td></tr>
  <?php endforeach ?>
  <?php if(!$report['rows']): ?><tr><td colspan="6" class="activity-empty">لا توجد أحداث مطابقة. جرّب توسيع الفترة أو إزالة أحد الفلاتر.</td></tr><?php endif ?>
  </tbody></table></div>
