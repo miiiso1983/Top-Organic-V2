@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
-import 'package:geolocator/geolocator.dart';
+import 'attendance_integrity.dart';
 import 'package:dio/dio.dart';
 import 'package:local_auth/local_auth.dart';
 import '../../core/data/cached_repository.dart';
@@ -11,13 +11,17 @@ import '../../shared/widgets/offline_banner.dart';
 import '../../features/auth/auth_provider.dart';
 
 class HrScreen extends StatefulWidget {
-  const HrScreen({super.key});
+  const HrScreen({super.key, this.integrityGuard});
+
+  final AttendanceIntegrityGuard? integrityGuard;
 
   @override
   State<HrScreen> createState() => _HrScreenState();
 }
 
 class _HrScreenState extends State<HrScreen> {
+  late final AttendanceIntegrityGuard _integrity =
+      widget.integrityGuard ?? AttendanceIntegrityGuard();
   bool _loading = true;
   bool _checking = false;
   String? _error;
@@ -62,10 +66,14 @@ class _HrScreenState extends State<HrScreen> {
   }
 
   Future<void> _checkAttendance(String type) async {
+    if (!mounted || _checking) return;
+    if (ModalRoute.of(context)?.isCurrent == false) return;
     final lang = context.read<LocaleProvider>().locale.languageCode;
     String t(String key) => AppStrings.t(key, lang);
     setState(() => _checking = true);
     try {
+      await _integrity.capture();
+      if (!mounted) return;
       final verified = await _verifyIdentity();
       if (!verified) {
         if (mounted) {
@@ -76,24 +84,14 @@ class _HrScreenState extends State<HrScreen> {
         return;
       }
 
-      Position? pos;
-      try {
-        var perm = await Geolocator.checkPermission();
-        if (perm == LocationPermission.denied)
-          perm = await Geolocator.requestPermission();
-        if (perm != LocationPermission.denied &&
-            perm != LocationPermission.deniedForever) {
-          pos = await Geolocator.getCurrentPosition();
-        }
-      } catch (_) {}
+      final location = await _integrity.capture();
 
       if (!mounted) return;
       final repo = context.read<CachedRepository>();
-      final res = await repo.postOrQueue('/attendance/check', {
+      final res = await repo.postJson('/attendance/check', {
         'check_type': type,
-        if (pos != null) 'latitude': pos.latitude,
-        if (pos != null) 'longitude': pos.longitude,
-      }, entity: 'attendance');
+        ...location.payload,
+      });
 
       if (!mounted) return;
       final msg =
@@ -103,6 +101,27 @@ class _HrScreenState extends State<HrScreen> {
               .toString();
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
       _load();
+    } on AttendanceIntegrityException catch (error) {
+      if (!mounted) return;
+      await AttendanceIntegrityGuard.reportMock(
+        context.read<CachedRepository>(),
+        type,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(t(error.messageKey)),
+          action: SnackBarAction(
+            label: t('retry'),
+            onPressed: () => _checkAttendance(type),
+          ),
+        ),
+      );
+    } on DioException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(t('attendance_connection_failed'))),
+      );
     } finally {
       if (mounted) setState(() => _checking = false);
     }

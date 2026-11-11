@@ -855,6 +855,7 @@ $router->get('/api/approvals', [ApiController::class, 'approvals'], ['api', 'per
 $router->post('/api/approvals/{id}/decide', [ApiController::class, 'decideApproval'], ['api', 'perm:mobile.approvals']);
 $router->get('/api/attendance/status', [ApiController::class, 'attendanceStatus'], ['api', 'perm:mobile.attendance']);
 $router->post('/api/attendance/check', [ApiController::class, 'attendanceCheck'], ['api', 'perm:mobile.attendance']);
+$router->post('/api/attendance/location-alert', [ApiController::class, 'attendanceLocationAlert'], ['api', 'perm:mobile.attendance']);
 $router->post('/api/attendance/verify-face', [ApiController::class, 'verifyFace'], ['api', 'perm:mobile.attendance']);
 $router->post('/api/attendance/reference-photo', [ApiController::class, 'updateReferencePhoto'], ['api', 'perm:mobile.attendance']);
 $router->post('/api/attendance/biometric', [ApiController::class, 'biometricAttendanceImport'], ['api', 'perm:hr.biometric']);

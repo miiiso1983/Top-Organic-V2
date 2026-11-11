@@ -4,7 +4,7 @@ import 'package:dio/dio.dart';
 import 'attendance_selfie.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:geolocator/geolocator.dart';
+import 'attendance_integrity.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../core/data/cached_repository.dart';
@@ -15,13 +15,17 @@ import 'liveness_camera_screen.dart';
 
 /// شاشة بصمة الحضور والانصراف native (بدون WebView)
 class AttendanceScreen extends StatefulWidget {
-  const AttendanceScreen({super.key});
+  const AttendanceScreen({super.key, this.integrityGuard});
+
+  final AttendanceIntegrityGuard? integrityGuard;
 
   @override
   State<AttendanceScreen> createState() => _AttendanceScreenState();
 }
 
 class _AttendanceScreenState extends State<AttendanceScreen> {
+  late final AttendanceIntegrityGuard _integrity =
+      widget.integrityGuard ?? AttendanceIntegrityGuard();
   bool _loading = true;
   bool _checking = false;
   String? _error;
@@ -170,11 +174,15 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   }
 
   Future<void> _check(String type) async {
+    if (!mounted || _checking) return;
+    if (ModalRoute.of(context)?.isCurrent == false) return;
     final lang = context.read<LocaleProvider>().locale.languageCode;
     String t(String key) => AppStrings.t(key, lang);
     setState(() => _checking = true);
     final repo = context.read<CachedRepository>();
     try {
+      await _integrity.capture();
+      if (!mounted) return;
       final verified = await _verifyIdentity();
       if (!verified) {
         if (mounted)
@@ -227,22 +235,12 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         }
       }
 
-      Position? pos;
-      try {
-        var perm = await Geolocator.checkPermission();
-        if (perm == LocationPermission.denied)
-          perm = await Geolocator.requestPermission();
-        if (perm != LocationPermission.denied &&
-            perm != LocationPermission.deniedForever) {
-          pos = await Geolocator.getCurrentPosition();
-        }
-      } catch (_) {}
+      final location = await _integrity.capture();
 
       if (!mounted) return;
       final payload = <String, dynamic>{
         'check_type': type,
-        if (pos != null) 'latitude': pos.latitude,
-        if (pos != null) 'longitude': pos.longitude,
+        ...location.payload,
         'photo': selfieBase64,
       };
 
@@ -268,6 +266,22 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           ),
         );
       }
+    } on AttendanceIntegrityException catch (error) {
+      if (!mounted) return;
+      await AttendanceIntegrityGuard.reportMock(
+        context.read<CachedRepository>(),
+        type,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(t(error.messageKey)),
+          action: SnackBarAction(
+            label: t('retry'),
+            onPressed: () => _check(type),
+          ),
+        ),
+      );
     } on DioException catch (e) {
       _showUploadError(e, lang);
     } finally {

@@ -15,6 +15,20 @@ class AppStrings {
     'required_field': {'ar': 'مطلوب', 'en': 'Required'},
     'retry': {'ar': 'إعادة المحاولة', 'en': 'Retry'},
 
+    'attendance_mock_blocked': {
+      'ar':
+          'أبلغ الجهاز أن الموقع الحالي محاكى. أوقف محاكاة الموقع ثم أعد المحاولة لتسجيل الحضور أو الانصراف. بقية التطبيق متاحة.',
+      'en':
+          'Your device reported a simulated location. Turn off location simulation and retry attendance check-in or check-out. The rest of the app is available.',
+    },
+
+    'attendance_connection_failed': {
+      'ar':
+          'تعذر إرسال البصمة. تحقق من الاتصال وأعد المحاولة. لم تُحفظ بصمة للإرسال لاحقاً.',
+      'en':
+          'Could not submit attendance. Check your connection and retry. No attendance was saved for later submission.',
+    },
+
     // تغيير كلمة المرور
     'change_password': {'ar': 'تغيير كلمة المرور', 'en': 'Change Password'},
     'current_password': {'ar': 'كلمة المرور الحالية', 'en': 'Current Password'},

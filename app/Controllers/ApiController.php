@@ -544,6 +544,18 @@ class ApiController extends Controller
             return;
         }
 
+        // Defense in depth only: these optional client signals are not attestation.
+        // Older/unsupported clients remain compatible; only explicit detections block.
+        $integrity = is_array($b['attendance_integrity'] ?? null) ? $b['attendance_integrity'] : [];
+        if (($integrity['mock_location'] ?? null) === true) {
+            \App\Core\AttendanceIntegrityService::record((int)$emp['id'], ($b['check_type'] ?? 'in') === 'out' ? 'out' : 'in', 'server');
+            Response::json([
+                'ok' => false,
+                'error_code' => 'attendance_mock_location',
+                'error' => 'أبلغ الجهاز عن موقع تجريبي. أوقف محاكاة الموقع ثم أعد محاولة تسجيل الحضور أو الانصراف.',
+            ], 403);
+            return;
+        }
         $lat = isset($b['latitude']) ? (float)$b['latitude'] : null;
         $lng = isset($b['longitude']) ? (float)$b['longitude'] : null;
         $type = ($b['check_type'] ?? 'in') === 'out' ? 'out' : 'in';
@@ -576,6 +588,19 @@ class ApiController extends Controller
         } catch (\Throwable $e) {
             Response::json(['ok' => false, 'error' => $e->getMessage()], 403);
         }
+    }
+
+    /** Reports a locally rejected attempt; never writes attendance or accepts a client employee ID. */
+    public function attendanceLocationAlert(): void
+    {
+        $body = $this->body();
+        $employee = Database::query('SELECT id FROM employees WHERE user_id = ?', [ApiAuth::id()])->fetch();
+        if (!$employee) { Response::json(['ok'=>false,'error'=>'لا يوجد ملف موظف مرتبط بهذا الحساب'],404); return; }
+        if (($body['mock_location'] ?? null) !== true || !in_array($body['check_type'] ?? '', ['in','out'], true)) {
+            Response::json(['ok'=>false,'error'=>'بيانات بلاغ الموقع غير صحيحة'],422); return;
+        }
+        \App\Core\AttendanceIntegrityService::record((int)$employee['id'], $body['check_type'], 'client');
+        Response::json(['ok'=>true]);
     }
 
     private function saveBase64Photo(string $data, string $type = 'attendance'): ?string
