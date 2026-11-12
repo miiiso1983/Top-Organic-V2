@@ -4,6 +4,7 @@ import '../../core/theme.dart';
 import '../../core/locale/locale_provider.dart';
 import '../../core/locale/app_strings.dart';
 import 'auth_provider.dart';
+import '../../core/widgets/privacy_policy_button.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -102,6 +103,8 @@ class _LoginScreenState extends State<LoginScreen> {
                               : Text(t('login_submit')),
                         ),
                       ),
+                      const SizedBox(height: 12),
+                      const PrivacyPolicyButton(),
                     ],
                   ),
                 ),

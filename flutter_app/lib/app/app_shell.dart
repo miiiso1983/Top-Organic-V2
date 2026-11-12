@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../core/widgets/privacy_policy_button.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../core/config.dart';
@@ -282,6 +283,7 @@ class _AppDrawer extends StatelessWidget {
                 }),
               ),
             ),
+            const PrivacyPolicyButton(color: Colors.white),
             ListTile(
               leading: const Icon(Icons.logout, color: Colors.white),
               title: Text(

@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../network/api_client.dart';
 import 'app_release.dart';
 import 'update_policy.dart';
+import '../widgets/privacy_policy_button.dart';
 
 class UpdateGate extends StatefulWidget {
   const UpdateGate({
@@ -194,6 +195,7 @@ class _UpdateGateState extends State<UpdateGate> with WidgetsBindingObserver {
                       onPressed: _checking ? null : _refresh,
                       child: Text(english ? 'Check again' : 'إعادة التحقق'),
                     ),
+                    const PrivacyPolicyButton(),
                     if (_error != null)
                       Text(
                         english
