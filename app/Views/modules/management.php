@@ -18,6 +18,7 @@
 </div>
 
 <div class="res-grid">
+  <?php if (Auth::can('admin.settings')): ?><a href="/admin/mobile-updates" class="res-card"><div class="icon"><i class="fa-solid fa-mobile-screen"></i></div><div class="title">تحديثات التطبيق</div><div class="desc">التحديث الإجباري ومتابعة النسخ — أندرويد وآيفون</div></a><?php endif; ?>
   <?php if (Auth::can('admin.audit')): ?>
   <a href="/admin/activity" class="res-card">
     <div class="icon"><i class="fa-solid fa-clock-rotate-left"></i></div>

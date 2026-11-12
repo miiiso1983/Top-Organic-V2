@@ -6,7 +6,7 @@ namespace App\Core;
 final class SystemActivityPresentation
 {
     private const ACTIONS = [
-        'attendance_mock_location'=>'اشتباه بمحاكاة الموقع — رفض البصمة',
+        'mobile_update_policy'=>'تعديل إلزام تحديث التطبيق','attendance_mock_location'=>'اشتباه بمحاكاة الموقع — رفض البصمة',
         'ApiController.attendanceLocationAlert'=>'بلاغ عن محاولة بصمة بموقع محاكى',
         'created'=>'إنشاء سجل','insert'=>'إضافة سجل','submitted'=>'إرسال للاعتماد','approved'=>'موافقة','rejected'=>'رفض','returned_for_edit'=>'إعادة للتعديل','resubmitted'=>'إعادة إرسال','comment'=>'إضافة تعليق','cancelled'=>'إلغاء','viewed'=>'عرض السجل','update'=>'تعديل بيانات','updated'=>'تحديث بيانات','confirmed'=>'تأكيد الحجز','checked_in'=>'تسجيل وصول الحجز','notified'=>'إرسال إشعار','seated'=>'إجلاس الضيوف','waitlisted'=>'إضافة إلى قائمة الانتظار','document'=>'إضافة مستند موظف','document_delete'=>'حذف مستند موظف','contract'=>'إضافة عقد موظف','archive'=>'أرشفة ملف الموظف','delete_reference_photo'=>'حذف صورة التحقق من الوجه',
         'item_cost_sheet.import'=>'استيراد قوالب تكلفة الأصناف','item_cost_sheet.save'=>'حفظ قالب تكلفة الصنف','item_cost_sheet.delete'=>'حذف قالب تكلفة الصنف','prepared_items.import'=>'استيراد الأصناف المحضرة','prepared_items.recalculate'=>'إعادة حساب تكلفة الصنف المحضر','item_price.update'=>'تعديل سعر الصنف','item_card.update'=>'تعديل بطاقة الصنف','notification_broadcast'=>'إرسال تنبيه جماعي','mail_sent'=>'إرسال رسالة داخلية','hr.team.shift'=>'تعيين وردية الموظف',

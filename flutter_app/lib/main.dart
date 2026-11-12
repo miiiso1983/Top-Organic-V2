@@ -16,6 +16,7 @@ import 'core/locale/locale_provider.dart';
 import 'features/auth/auth_provider.dart';
 import 'features/notifications/notifications_provider.dart';
 import 'app/router.dart';
+import 'core/updates/update_gate.dart';
 
 void main() {
   runZonedGuarded(
@@ -165,7 +166,7 @@ class _TopOrganicAppState extends State<TopOrganicApp> {
           ],
           builder: (context, child) => Directionality(
             textDirection: localeProvider.textDirection,
-            child: child!,
+            child: UpdateGate(api: _apiClient, child: child!),
           ),
           routerConfig: _router,
         ),

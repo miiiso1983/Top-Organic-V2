@@ -1,12 +1,14 @@
 import 'package:dio/dio.dart';
 import '../config.dart';
 import '../storage/auth_storage.dart';
+import '../updates/app_release.dart';
+import '../updates/update_policy.dart';
 
 /// عميل REST موحّد يتصل بخادم Top Organic (PHP MVC)
 class ApiClient {
-  ApiClient({AuthStorage? authStorage})
+  ApiClient({AuthStorage? authStorage, Dio? dio})
     : _authStorage = authStorage ?? AuthStorage() {
-    _dio = Dio(
+    _dio = dio ?? Dio(
       BaseOptions(
         baseUrl: AppConfig.apiBaseUrl,
         connectTimeout: AppConfig.connectTimeout,
@@ -17,6 +19,9 @@ class ApiClient {
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
+          try {
+            options.headers.addAll((await AppRelease.current()).headers);
+          } catch (_) {}
           final token = await _authStorage.getToken();
           if (token != null) {
             options.headers['Authorization'] = 'Bearer $token';
@@ -24,6 +29,11 @@ class ApiClient {
           handler.next(options);
         },
         onError: (error, handler) {
+          if (error.response?.statusCode == 426 &&
+              error.response?.data is Map &&
+              error.response?.data['error_code'] == 'app_update_required') {
+            UpdateRequiredSignal.accept(error.response?.data['update']);
+          }
           if (error.response?.statusCode == 401) {
             onUnauthorized?.call();
           }

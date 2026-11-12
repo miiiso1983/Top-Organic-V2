@@ -827,6 +827,9 @@ $router->post('/admin/app-types/{id}/delete', [AdminController::class, 'deleteAp
 // ===== REST API لتطبيق الموبايل =====
 // ملاحظة: 'api' يتحقق من الرمز المميز فقط. أضفنا 'perm:xxx' على كل مسار حساس
 // بنفس صلاحيات نظيره في الويب لمنع أي وصول غير مصرح به عبر تطبيق الموبايل.
+$router->get('/api/app/update-policy', [\App\Controllers\MobileUpdateController::class, 'policy']);
+$router->get('/admin/mobile-updates', [\App\Controllers\MobileUpdateController::class, 'index'], ['auth', 'perm:admin.settings']);
+$router->post('/admin/mobile-updates', [\App\Controllers\MobileUpdateController::class, 'save'], ['auth', 'perm:admin.settings']);
 $router->post('/api/login', [ApiController::class, 'login']);
 $router->get('/api/permissions', [ApiController::class, 'permissions'], ['api']);
 $router->get('/api/dashboard', [ApiController::class, 'dashboard'], ['api']);

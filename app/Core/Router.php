@@ -69,6 +69,7 @@ class Router
                         Response::json(['error' => 'unauthorized'], 401);
                         return;
                     }
+                    if (!in_array($uri, ['/api/push/subscribe','/api/push/unsubscribe','/api/ptt/receiver/remove'], true) && MobileUpdateService::rejectIfRequired(ApiAuth::id())) return;
                     // مزامنة جلسة مؤقتة كي تعمل خدمات الويب الداخلية
                     // (Auth::id/branchId/can, ApprovalService, StockService...) مع طلبات API
                     $apiUser = ApiAuth::user();

@@ -43,6 +43,7 @@ class ApiController extends Controller
 
     public function login(): void
     {
+        if (\App\Core\MobileUpdateService::rejectIfRequired()) return;
         $b = $this->body();
         $user = Database::query(
             "SELECT u.*, r.name AS role_name, e.id AS employee_id, e.full_name AS employee_name,
@@ -3514,7 +3515,9 @@ class ApiController extends Controller
     public function pushSubscribe(): void
     {
         try {
-            \App\Core\Workflow\PushService::subscribe(ApiAuth::id(), $this->body());
+            $body=$this->body();
+            \App\Core\Workflow\PushService::subscribe(ApiAuth::id(), $body);
+            \App\Core\MobileUpdateService::remember(ApiAuth::id(), (string)($body['platform']??''));
             Response::json(['ok' => true, 'message' => 'تم تسجيل الاشتراك']);
         } catch (\Throwable $e) {
             Response::json(['ok' => false, 'error' => $e->getMessage()], 422);
